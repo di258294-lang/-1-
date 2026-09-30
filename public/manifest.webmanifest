@@ -1,0 +1,12 @@
+{
+  "name": "HOLD",
+  "short_name": "HOLD",
+  "description": "누르고 있는 동안만 주식을 들고 있어요. 매일 하나의 차트, 40초 타이밍 게임.",
+  "lang": "ko",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f3f5",
+  "theme_color": "#f2f3f5",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
