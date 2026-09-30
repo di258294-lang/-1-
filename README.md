@@ -25,6 +25,10 @@ npm install
 npm run dev        # http://localhost:5173
 npm test           # 코어 로직 테스트
 npm run build      # 타입체크 + 프로덕션 빌드 (dist/)
+
+# HTML 파일 하나로 묶기 (폰트까지 포함, 약 150KB)
+pip install fonttools brotli
+npm run build && python3 scripts/build-single.py dist/hold.html
 ```
 
 ## 구조

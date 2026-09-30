@@ -52,6 +52,7 @@ export class Chart {
   private lo = 0
   private hi = 0
   private palette: Palette
+  private themeKey = ''
   private media = window.matchMedia('(prefers-color-scheme: dark)')
 
   constructor(
@@ -61,16 +62,17 @@ export class Chart {
   ) {
     this.ctx = canvas.getContext('2d')!
     this.palette = readPalette()
-    this.media.addEventListener('change', this.onScheme)
   }
 
-  private onScheme = () => {
+  /** Re-read colors when the OS scheme or an explicit data-theme changes. */
+  private syncPalette() {
+    const key = `${this.media.matches}|${document.documentElement.dataset.theme ?? ''}`
+    if (key === this.themeKey) return
+    this.themeKey = key
     this.palette = readPalette()
   }
 
-  destroy() {
-    this.media.removeEventListener('change', this.onScheme)
-  }
+  destroy() {}
 
   private fit() {
     const rect = this.canvas.getBoundingClientRect()
@@ -97,6 +99,7 @@ export class Chart {
   /** Draw a frame. `smooth` eases the y range so the chart does not jump. */
   draw(frame: ChartFrame, smooth = true) {
     this.fit()
+    this.syncPalette()
     const { ctx, palette: c } = this
     const { from, to, head } = frame
     const prices = this.market.prices

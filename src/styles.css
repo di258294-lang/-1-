@@ -15,6 +15,9 @@
   --down-soft: #e7effc;
   --on-ink: #ffffff;
   --scrim: rgba(17, 20, 24, 0.42);
+  /* P&L text on the pressed (inverted) pad */
+  --pad-up: #ff6b78;
+  --pad-down: #7aa9ff;
 
   --r-sm: 10px;
   --r-md: 16px;
@@ -27,7 +30,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --ink: #eef0f3;
     --ink-2: #aab0ba;
     --ink-3: #737a86;
@@ -42,8 +45,30 @@
     --down-soft: #13223d;
     --on-ink: #0c0e11;
     --scrim: rgba(0, 0, 0, 0.6);
+    --pad-up: #e0263a;
+    --pad-down: #1a62d6;
     color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --ink: #eef0f3;
+  --ink-2: #aab0ba;
+  --ink-3: #737a86;
+  --ink-4: #4a505a;
+  --canvas: #0c0e11;
+  --surface: #16191e;
+  --well: #1f2329;
+  --grid: #1e2227;
+  --up: #ff4a5c;
+  --up-soft: #3a1419;
+  --down: #4d8dff;
+  --down-soft: #13223d;
+  --on-ink: #0c0e11;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --pad-up: #e0263a;
+  --pad-down: #1a62d6;
+  color-scheme: dark;
 }
 
 * {
@@ -494,13 +519,8 @@ button {
   opacity: 1;
 }
 
-.pad.on .pad-sub.up { color: #ff6b78; }
-.pad.on .pad-sub.down { color: #7aa9ff; }
-
-@media (prefers-color-scheme: dark) {
-  .pad.on .pad-sub.up { color: var(--up); }
-  .pad.on .pad-sub.down { color: var(--down); }
-}
+.pad.on .pad-sub.up { color: var(--pad-up); }
+.pad.on .pad-sub.down { color: var(--pad-down); }
 
 .pad.idle {
   opacity: 0.55;
