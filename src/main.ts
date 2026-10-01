@@ -1,5 +1,6 @@
 import './styles.css'
 import type { Route, Screen } from './ui/app'
+import { habitsScreen } from './ui/habits'
 import { homeScreen } from './ui/home'
 import { playScreen } from './ui/play'
 import { resultScreen } from './ui/result'
@@ -19,6 +20,9 @@ function go(route: Route) {
       break
     case 'result':
       current = resultScreen(go, route.mode, route.market, route.result)
+      break
+    case 'habits':
+      current = habitsScreen(go)
       break
   }
   root.append(current.el)

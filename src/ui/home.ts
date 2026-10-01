@@ -1,5 +1,7 @@
 import { dateKey, dayNumber, dailySeed, msUntilNextDay } from '../core/daily'
-import { direction, formatCountdown, formatPct, formatPrice } from '../core/format'
+import { direction, formatCountdown, formatPct, formatPrice, formatWon } from '../core/format'
+import { PROFILE_MIN_ROUNDS, profileFrom, TYPES } from '../core/habits'
+import { SEASON_START, seasonDaysLeft, seasonLabel } from '../core/season'
 import { generateMarket, HISTORY_TICKS, PLAY_TICKS, playPrice, type Market } from '../core/market'
 import { save, type SavedDaily } from '../core/storage'
 import { hashString } from '../core/rng'
@@ -37,7 +39,8 @@ export function homeScreen(go: Navigate): Screen {
   const market = generateMarket(dailySeed(key))
   const played = save.daily(key)
   const streak = save.streak(key)
-  const stats = save.dailyStats()
+  const history = save.habitHistory()
+  const profile = profileFrom(history)
 
   const top = h(
     'div',
@@ -58,7 +61,7 @@ export function homeScreen(go: Navigate): Screen {
     h(
       'p',
       { class: 'home-lede' },
-      played ? '내일 0시에 새 차트가 올라와요.' : '모두가 같은 차트로 40초를 겨뤄요. 한 번뿐이에요.',
+      played ? '내일 0시에 새 차트가 올라와요.' : '모두가 같은 차트로 40초. 결과는 시즌 계좌에 그대로 쌓여요.',
     ),
   )
 
@@ -90,27 +93,43 @@ export function homeScreen(go: Navigate): Screen {
     played ? null : h('button', { class: 'btn btn-text', onclick: startPractice }, '연습부터 해볼게요'),
   )
 
-  const statRow = stats
-    ? h(
-        'div',
-        { class: 'stats' },
-        stat('참여', `${stats.played}일`),
-        stat('시장을 이긴 날', `${stats.beat}일`),
-        stat('평균 수익률', formatPct(stats.avg, 1), direction(stats.avg)),
-      )
-    : null
-
-  const el = h('main', { class: 'screen' }, top, hero, body, statRow, actions)
-  return { el, destroy: () => cleanups.forEach((f) => f()) }
-}
-
-function stat(label: string, value: string, tone?: string) {
-  return h(
-    'div',
-    { class: 'stat' },
-    h('div', { class: 'stat-label' }, label),
-    h('div', { class: `stat-value num ${tone ?? ''}` }, value),
+  const account = save.accountAfter(key)
+  const seasonReturn = account / SEASON_START - 1
+  const list = h(
+    'section',
+    { class: 'list' },
+    h(
+      'div',
+      { class: 'list-row' },
+      h('span', { class: 'list-label' }, `${seasonLabel(key)} 계좌`, h('small', null, `시즌 끝까지 ${seasonDaysLeft(key)}일`)),
+      h(
+        'span',
+        { class: 'list-value num' },
+        h('span', null, formatWon(account), h('small', { class: direction(seasonReturn) }, formatPct(seasonReturn))),
+      ),
+    ),
+    h(
+      'button',
+      { class: 'list-row', onclick: () => go({ name: 'habits' }) },
+      h(
+        'span',
+        { class: 'list-label' },
+        '내 매매 습관',
+        h('small', null, profile ? `최근 ${profile.rounds}판 기준` : `${PROFILE_MIN_ROUNDS}판 하면 성향이 나와요`),
+      ),
+      h(
+        'span',
+        { class: 'list-value' },
+        profile
+          ? TYPES[profile.type].name
+          : h('span', { class: 'num' }, `${Math.min(history.length, PROFILE_MIN_ROUNDS)}/${PROFILE_MIN_ROUNDS}판`),
+        h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
+      ),
+    ),
   )
+
+  const el = h('main', { class: 'screen' }, top, hero, body, list, actions)
+  return { el, destroy: () => cleanups.forEach((f) => f()) }
 }
 
 function teaser(market: Market, cleanups: Array<() => void>) {

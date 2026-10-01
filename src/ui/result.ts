@@ -1,4 +1,7 @@
 import { direction, formatPct, formatWon } from '../core/format'
+import { analyzeRound, PROFILE_MIN_ROUNDS, profileFrom, roundInsight, TYPES } from '../core/habits'
+import { seasonLabel } from '../core/season'
+import { save } from '../core/storage'
 import { generateMarket, HISTORY_TICKS, PLAY_TICKS, TICKS_PER_SECOND, type Market } from '../core/market'
 import { hashString } from '../core/rng'
 import type { RoundResult } from '../core/round'
@@ -6,6 +9,8 @@ import type { Mode, Navigate, Screen } from './app'
 import { Chart } from './chart'
 import { h, icons, svg } from './dom'
 import { shareResult } from './share'
+
+const KICKER = { warn: '이번 판에서 보인 습관', good: '이번 판에서 잘한 점', none: '이번 판의 습관' } as const
 
 function row(label: string, value: number, me = false) {
   return h(
@@ -51,6 +56,27 @@ export function resultScreen(go: Navigate, mode: Mode, market: Market, result: R
 
   const heldPct = Math.round(result.heldRatio * 100)
 
+  // The habit this round revealed, and where it leaves the player's type.
+  const insight = roundInsight(analyzeRound(market, result.held, result.fees))
+  const history = save.habitHistory()
+  const profile = profileFrom(history)
+  const foot = h(
+    'button',
+    { class: 'habit-foot', onclick: () => go({ name: 'habits' }) },
+    profile
+      ? h('span', null, '지금 내 성향 ', h('b', null, TYPES[profile.type].name))
+      : h('span', null, '성향 진단까지 ', h('b', { class: 'num' }, `${PROFILE_MIN_ROUNDS - history.length}판`), ' 남았어요'),
+    h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
+  )
+  const habitCard = h(
+    'section',
+    { class: 'habit-card' },
+    h('p', { class: 'habit-kicker' }, KICKER[insight.tone]),
+    h('h2', { class: 'habit-title' }, insight.title),
+    h('p', { class: 'habit-line num' }, insight.line),
+    foot,
+  )
+
   const recap = h(
     'section',
     { class: 'recap' },
@@ -79,6 +105,7 @@ export function resultScreen(go: Navigate, mode: Mode, market: Market, result: R
     h('p', { class: 'result-title' }, mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : '연습 결과'),
     h('h1', { class: 'result-grade' }, result.grade.title),
     h('p', { class: 'result-line' }, result.grade.line),
+    habitCard,
     h('div', { class: 'result-chart' }, canvas),
     h(
       'div',
@@ -96,7 +123,14 @@ export function resultScreen(go: Navigate, mode: Mode, market: Market, result: R
     h(
       'p',
       { class: 'fine num' },
-      `${formatWon(result.finalEquity)} · 매매 ${result.trades}번 · 수수료 ${formatWon(result.fees)} · 보유 ${heldPct}%`,
+      mode.kind === 'daily'
+        ? `${seasonLabel(mode.key)} 계좌 ${formatWon(result.startEquity)} → ${formatWon(result.finalEquity)}`
+        : `${formatWon(result.finalEquity)}으로 끝났어요`,
+    ),
+    h(
+      'p',
+      { class: 'fine num' },
+      `매매 ${result.trades}번 · 수수료 ${formatWon(result.fees)} · 보유 시간 ${heldPct}%`,
     ),
     recap,
     h(

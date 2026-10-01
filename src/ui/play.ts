@@ -1,6 +1,7 @@
 import { formatPct, formatWon, formatWonDelta, direction } from '../core/format'
 import { HISTORY_TICKS, PLAY_TICKS, playPrice, ROUND_SECONDS, TICKS_PER_SECOND, type Market } from '../core/market'
 import { save } from '../core/storage'
+import { analyzeRound } from '../core/habits'
 import { advanceTo, createRound, isOver, setHolding, START_EQUITY, summarize } from '../core/round'
 import type { Mode, Navigate, Screen } from './app'
 import { Chart } from './chart'
@@ -12,10 +13,11 @@ const WINDOW_TICKS = 200
 const COUNTDOWN_MS = 2400
 
 export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
-  const round = createRound(market)
+  // Daily rounds trade the season account; practice always starts fresh.
+  const round = createRound(market, mode.kind === 'daily' ? save.accountBefore(mode.key) : START_EQUITY)
 
   const clock = h('span', { class: 'play-clock num' }, `0:${ROUND_SECONDS}`)
-  const equity = h('div', { class: 'equity num' }, formatWon(START_EQUITY))
+  const equity = h('div', { class: 'equity num' }, formatWon(round.startEquity))
   const delta = h('div', { class: 'equity-delta num flat' }, '0원 (0.00%)')
   const canvas = h('canvas')
   const countdown = h('div', { class: 'countdown num', 'aria-live': 'assertive' })
@@ -168,8 +170,8 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   }
 
   const renderNumbers = () => {
-    const diff = round.equity - START_EQUITY
-    const ratio = round.equity / START_EQUITY - 1
+    const diff = round.equity - round.startEquity
+    const ratio = round.equity / round.startEquity - 1
     const tone = direction(diff)
     equity.textContent = formatWon(round.equity)
     delta.textContent = `${formatWonDelta(diff)} (${formatPct(ratio)})`
@@ -192,6 +194,10 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
       })
     } else {
       save.recordPractice(result.yourReturn)
+    }
+    const habits = analyzeRound(market, result.held, result.fees)
+    if (habits.trades > 0) {
+      save.recordHabits(mode.kind === 'daily' ? `d:${mode.key}` : `p:${Date.now()}`, habits.scores)
     }
     go({ name: 'result', mode, market, result })
   }

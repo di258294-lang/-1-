@@ -7,6 +7,7 @@ export type Route =
   | { name: 'home' }
   | { name: 'play'; mode: Mode; market: Market }
   | { name: 'result'; mode: Mode; market: Market; result: RoundResult }
+  | { name: 'habits' }
 
 export type Screen = { el: HTMLElement; destroy?: () => void }
 

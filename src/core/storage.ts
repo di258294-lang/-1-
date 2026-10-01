@@ -1,4 +1,6 @@
 import { previousKey } from './daily'
+import type { HabitScores } from './habits'
+import { accountAfter, accountBefore } from './season'
 
 export type SavedDaily = {
   yourReturn: number
@@ -15,12 +17,16 @@ type SaveFile = {
   daily: Record<string, SavedDaily>
   practice: { rounds: number; best: number | null }
   seenIntro: boolean
+  /** Habit scores of recent rounds that had at least one trade, oldest first. */
+  habits: Array<{ id: string; scores: HabitScores }>
 }
+
+const HABIT_HISTORY = 30
 
 const KEY = 'hold.save.v1'
 
 function empty(): SaveFile {
-  return { v: 1, daily: {}, practice: { rounds: 0, best: null }, seenIntro: false }
+  return { v: 1, daily: {}, practice: { rounds: 0, best: null }, seenIntro: false, habits: [] }
 }
 
 function load(): SaveFile {
@@ -86,12 +92,21 @@ export const save = {
     }
     return n
   },
-  dailyStats() {
-    const entries = Object.values(file().daily)
-    if (!entries.length) return null
-    const beat = entries.filter((e) => e.yourReturn > e.buyHoldReturn).length
-    const avg = entries.reduce((s, e) => s + e.yourReturn, 0) / entries.length
-    return { played: entries.length, beat, avg }
+  recordHabits(id: string, scores: HabitScores) {
+    const f = file()
+    if (f.habits.some((h) => h.id === id)) return
+    f.habits.push({ id, scores })
+    f.habits = f.habits.slice(-HABIT_HISTORY)
+    persist(f)
+  },
+  habitHistory(): HabitScores[] {
+    return file().habits.map((h) => h.scores)
+  },
+  accountBefore(key: string) {
+    return accountBefore(file().daily, key)
+  },
+  accountAfter(key: string) {
+    return accountAfter(file().daily, key)
   },
   seenIntro() {
     return file().seenIntro

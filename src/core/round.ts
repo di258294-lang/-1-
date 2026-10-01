@@ -6,6 +6,7 @@ export const FEE_RATE = 0.001
 
 export type Round = {
   market: Market
+  startEquity: number
   tick: number
   holding: boolean
   equity: number
@@ -19,17 +20,18 @@ export type Round = {
   entryEquity: number
 }
 
-export function createRound(market: Market): Round {
+export function createRound(market: Market, startEquity = START_EQUITY): Round {
   return {
     market,
+    startEquity,
     tick: 0,
     holding: false,
-    equity: START_EQUITY,
+    equity: startEquity,
     fees: 0,
     trades: 0,
     held: [],
-    equityCurve: [START_EQUITY],
-    entryEquity: START_EQUITY,
+    equityCurve: [startEquity],
+    entryEquity: startEquity,
   }
 }
 
@@ -73,6 +75,7 @@ export function advanceTo(round: Round, target: number) {
 export type Grade = { title: string; line: string }
 
 export type RoundResult = {
+  startEquity: number
   finalEquity: number
   yourReturn: number
   buyHoldReturn: number
@@ -118,10 +121,11 @@ export function summarize(round: Round): RoundResult {
   const first = playPrice(round.market, 0)
   const last = playPrice(round.market, PLAY_TICKS)
   const buyHoldReturn = last / first - 1
-  const yourReturn = round.equity / START_EQUITY - 1
+  const yourReturn = round.equity / round.startEquity - 1
   const heldTicks = round.held.filter(Boolean).length
   const heldRatio = round.held.length ? heldTicks / round.held.length : 0
   return {
+    startEquity: round.startEquity,
     finalEquity: round.equity,
     yourReturn,
     buyHoldReturn,

@@ -5,6 +5,7 @@ import { advanceTo, createRound, FEE_RATE, setHolding, START_EQUITY, summarize }
 import { dateKey, dayNumber, msUntilNextDay, previousKey } from './daily'
 import { formatPct, formatWonDelta } from './format'
 import { timelineSquares } from './share'
+import { accountAfter, accountBefore, SEASON_START, seasonDaysLeft, seasonLabel } from './season'
 
 describe('rng', () => {
   it('is deterministic per seed', () => {
@@ -110,5 +111,32 @@ describe('share', () => {
     const squares = [...timelineSquares(m, new Array(PLAY_TICKS).fill(false))]
     expect(squares).toHaveLength(10)
     expect(squares.every((c) => c === '⬜')).toBe(true)
+  })
+})
+
+describe('season account', () => {
+  const daily = {
+    '2026-09-30': { yourReturn: 0.5 },
+    '2026-10-01': { yourReturn: 0.1 },
+    '2026-10-02': { yourReturn: -0.2 },
+  }
+  it('compounds daily results within the month only', () => {
+    expect(accountBefore(daily, '2026-10-01')).toBe(SEASON_START)
+    expect(accountAfter(daily, '2026-10-01')).toBeCloseTo(11_000_000)
+    expect(accountAfter(daily, '2026-10-02')).toBeCloseTo(8_800_000)
+    // Not played yet: before and after match.
+    expect(accountBefore(daily, '2026-10-05')).toBeCloseTo(8_800_000)
+    expect(accountAfter(daily, '2026-10-05')).toBeCloseTo(8_800_000)
+  })
+  it('labels the season and counts the days left', () => {
+    expect(seasonLabel('2026-10-01')).toBe('10월 시즌')
+    expect(seasonDaysLeft('2026-10-01')).toBe(30)
+    expect(seasonDaysLeft('2026-02-28')).toBe(0)
+  })
+  it('starts a round from any balance', () => {
+    const r = createRound(generateMarket(9), 5_000_000)
+    advanceTo(r, PLAY_TICKS)
+    expect(summarize(r).finalEquity).toBe(5_000_000)
+    expect(summarize(r).yourReturn).toBe(0)
   })
 })

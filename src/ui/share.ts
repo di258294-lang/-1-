@@ -16,6 +16,11 @@ export async function shareResult(opts: {
     day: opts.day,
     url: location.origin,
   })
+  await shareOut(text)
+}
+
+/** Native share sheet when available, otherwise copy to the clipboard. */
+export async function shareOut(text: string) {
   try {
     if (navigator.share) {
       await navigator.share({ text })

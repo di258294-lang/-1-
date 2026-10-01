@@ -79,7 +79,7 @@ const RUMOR_UP = [
   '{n} 인수합병설 확산',
   '{n}, 대기업 납품 임박설',
   '큰손이 {n} 모으고 있다는 소문',
-  '{n} 신약 결과 좋다는 얘기 돌아',
+  '{n} 실적 깜짝 개선 얘기 돌아',
 ]
 const RUMOR_DOWN = [
   '{n} 회계 감리설 확산',
@@ -106,8 +106,8 @@ function planNews(rng: Rng, company: Company): NewsEvent[] {
     const at = 40 + i * slot + rng.int(0, slot - NEWS_LEAD_TICKS - 20)
     const kind: NewsKind = rng.chance(0.55) ? 'filing' : 'rumor'
     const implied: 1 | -1 = rng.chance(0.5) ? 1 : -1
-    // Filings are facts. Rumors are right a bit more often than not.
-    const actual: 1 | -1 = kind === 'filing' || rng.chance(0.6) ? implied : ((-implied) as 1 | -1)
+    // Filings are facts. Rumors are a coin flip, so trading on them is gambling.
+    const actual: 1 | -1 = kind === 'filing' || rng.chance(0.5) ? implied : ((-implied) as 1 | -1)
     const pool =
       kind === 'filing'
         ? implied > 0
@@ -144,8 +144,8 @@ export function generateMarket(seed: number): Market {
   // Additive shocks keyed by absolute tick index.
   const shocks = new Map<number, number>()
   for (const ev of news) {
-    const isFalseRumor = ev.kind === 'rumor' && ev.actual !== ev.implied
-    const size = isFalseRumor ? rng.range(0.025, 0.045) : rng.range(0.045, 0.085)
+    // A false rumor hits as hard as a true one: the market punishes the crowd.
+    const size = rng.range(0.045, 0.085)
     const spread = rng.int(3, 6)
     for (let k = 0; k < spread; k++) {
       const abs = HISTORY_TICKS + ev.impactAt + k

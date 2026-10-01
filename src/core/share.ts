@@ -1,6 +1,7 @@
 import { PLAY_TICKS, playPrice, type Market } from './market'
 import type { RoundResult } from './round'
 import { formatPct } from './format'
+import { HABIT_KEYS, HABIT_LABELS, TYPES, type Profile } from './habits'
 
 const SLICES = 10
 
@@ -39,6 +40,21 @@ export function shareText(opts: {
     `${head}  ${formatPct(result.yourReturn, 1)}`,
     `그냥 들고 있었으면 ${formatPct(result.buyHoldReturn, 1)}`,
     timelineSquares(market, result.held),
+    url,
+  ].join('\n')
+}
+
+/** "■■■□□" for a 0..1 score. */
+export function meter(score: number, cells = 5) {
+  const filled = Math.round(Math.max(0, Math.min(1, score)) * cells)
+  return '■'.repeat(filled) + '□'.repeat(cells - filled)
+}
+
+export function profileShareText(profile: Profile, url: string) {
+  return [
+    'HOLD 매매 습관 진단',
+    `나는 ${TYPES[profile.type].name}`,
+    ...HABIT_KEYS.map((k) => `${meter(profile.scores[k])} ${HABIT_LABELS[k]}`),
     url,
   ].join('\n')
 }
