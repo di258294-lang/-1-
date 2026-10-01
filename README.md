@@ -49,4 +49,18 @@ src/ui/     화면 (프레임워크 없이 DOM + canvas)
   home.ts / play.ts / result.ts / habits.ts / chart.ts / intro.ts / sheet.ts
 ```
 
+## 앱 (iOS / Android)
+
+[Capacitor](https://capacitorjs.com)로 같은 웹 빌드를 네이티브 앱으로 감싸요. `android/`, `ios/`가 네이티브 프로젝트예요.
+
+```bash
+npm run cap:sync      # 웹 빌드 후 android/, ios/에 복사
+npx cap open android  # Android Studio
+npx cap open ios      # Xcode (Mac)
+```
+
+푸시할 때마다 GitHub Actions가 웹 버전을 GitHub Pages에 올리고(`Web`), 테스트용 안드로이드 APK를 만들어요(`Android`).
+
+**출시 절차는 [docs/RELEASE.md](docs/RELEASE.md)에 처음부터 끝까지 있어요.**
+
 기획 배경과 디자인 원칙은 [docs/PLAN.md](docs/PLAN.md), [docs/DESIGN.md](docs/DESIGN.md)에 있어요.

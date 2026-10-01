@@ -44,8 +44,8 @@ def subset_font() -> str:
 
 def main(target: str) -> None:
     html = (DIST / 'index.html').read_text(encoding='utf-8')
-    js_path = re.search(r'<script[^>]+src="/(assets/[^"]+\.js)"', html).group(1)
-    css_path = re.search(r'<link[^>]+href="/(assets/[^"]+\.css)"', html).group(1)
+    js_path = re.search(r'<script[^>]+src="\.?/(assets/[^"]+\.js)"', html).group(1)
+    css_path = re.search(r'<link[^>]+href="\.?/(assets/[^"]+\.css)"', html).group(1)
     js = (DIST / js_path).read_text(encoding='utf-8').replace('</script', '<\\/script')
     css = (DIST / css_path).read_text(encoding='utf-8')
     css = re.sub(r'@font-face\{[^}]*\}', '', css)

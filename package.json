@@ -9,12 +9,20 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "assets": "node scripts/render-assets.mjs && capacitor-assets generate --ios --android --iconBackgroundColor \"#111418\" --iconBackgroundColorDark \"#111418\" --splashBackgroundColor \"#f2f3f5\" --splashBackgroundColorDark \"#0c0e11\"",
+    "cap:sync": "npm run build && cap sync"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/haptics": "^8.0.2",
     "pretendard": "^1.3.9"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@playwright/test": "^1.63.0",
     "typescript": "^7.0.2",
     "vite": "^6.0.0",

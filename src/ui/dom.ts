@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core'
+import { Haptics, ImpactStyle } from '@capacitor/haptics'
+
 type Attrs = Record<string, string | number | boolean | EventListener | undefined>
 type Child = Node | string | null | undefined | false
 
@@ -38,7 +41,14 @@ export const icons = {
     '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M5.5 5.5l11 11m0-11l-11 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
 }
 
+const native = Capacitor.isNativePlatform()
+
+/** A short tap: Taptic Engine / vibrator in the apps, vibrate() on the web. */
 export function haptic(ms = 8) {
+  if (native) {
+    Haptics.impact({ style: ms >= 10 ? ImpactStyle.Medium : ImpactStyle.Light }).catch(() => {})
+    return
+  }
   try {
     navigator.vibrate?.(ms)
   } catch {

@@ -3,10 +3,59 @@
   "short_name": "HOLD",
   "description": "누르고 있는 동안만 주식을 들고 있어요. 매일 하나의 차트, 40초 타이밍 게임.",
   "lang": "ko",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f2f3f5",
   "theme_color": "#f2f3f5",
-  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+  "icons": [
+    {
+      "src": "./icons/icon-48.webp",
+      "type": "image/webp",
+      "sizes": "48x48",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-72.webp",
+      "type": "image/webp",
+      "sizes": "72x72",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-96.webp",
+      "type": "image/webp",
+      "sizes": "96x96",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-128.webp",
+      "type": "image/webp",
+      "sizes": "128x128",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-192.webp",
+      "type": "image/webp",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-256.webp",
+      "type": "image/webp",
+      "sizes": "256x256",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.webp",
+      "type": "image/webp",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
 }

@@ -20,6 +20,7 @@ export function showIntro(onDone: () => void) {
         h('li', null, h('span', null, h('b', null, '사고팔 때마다 수수료 0.1%'), '가 빠져요. 너무 자주 누르면 손해예요.')),
         h('li', null, h('span', null, h('b', null, '뉴스가 뜨고 1.5초 뒤에 가격이 움직여요.'), ' 공시는 믿어도 되지만 지라시는 반은 틀려요.')),
         h('li', null, h('span', null, h('b', null, '오늘의 차트 결과는 한 달 동안 계좌에 쌓여요.'), ' 판이 끝날 때마다 내 매매 습관도 알려줘요.')),
+        h('li', null, h('span', null, '등장하는 회사와 뉴스는 모두 가상이고, 실제 돈은 오가지 않아요.')),
       ),
       h('button', { class: 'btn btn-primary', onclick: close }, '알겠어요'),
     ),
