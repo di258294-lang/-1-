@@ -29,6 +29,13 @@ export function direction(value: number): 'up' | 'down' | 'flat' {
   return value > 0 ? 'up' : 'down'
 }
 
+/** "채권" -> "채권이에요", "레버리지 2배" -> "레버리지 2배예요". */
+export function iEyo(word: string) {
+  const code = word.charCodeAt(word.length - 1) - 0xac00
+  const hasBatchim = code >= 0 && code <= 11171 && code % 28 !== 0
+  return `${word}${hasBatchim ? '이에요' : '예요'}`
+}
+
 export function formatCountdown(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000))
   const h = Math.floor(total / 3600)

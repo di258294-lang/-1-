@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { createRng, hashString } from './rng'
 import { generateMarket, HISTORY_TICKS, PLAY_TICKS, playPrice } from './market'
-import { advanceTo, createRound, FEE_RATE, setHolding, START_EQUITY, summarize } from './round'
+import { advanceTo, CASH_RATE_PER_TICK, createRound, FEE_RATE, setHolding, START_EQUITY, summarize } from './round'
 import { dateKey, dayNumber, msUntilNextDay, previousKey } from './daily'
-import { formatPct, formatWonDelta } from './format'
+import { formatPct, formatWonDelta, iEyo } from './format'
 import { timelineSquares } from './share'
+import { dailyProduct, PRODUCT_ORDER, PRODUCTS } from './products'
+import { productLesson } from './lessons'
 import { accountAfter, accountBefore, SEASON_START, seasonDaysLeft, seasonLabel } from './season'
 
 describe('rng', () => {
@@ -52,11 +54,13 @@ describe('round', () => {
     expect(r.equity).toBeCloseTo(START_EQUITY * (1 - FEE_RATE) * bh * (1 - FEE_RATE), 4)
     expect(summarize(r).heldRatio).toBe(1)
   })
-  it('keeps cash flat when never holding', () => {
+  it('pays a little interest on idle cash', () => {
     const r = createRound(generateMarket(5))
     advanceTo(r, PLAY_TICKS)
     const s = summarize(r)
-    expect(s.finalEquity).toBe(START_EQUITY)
+    expect(s.finalEquity).toBeCloseTo(START_EQUITY * (1 + CASH_RATE_PER_TICK) ** PLAY_TICKS, 4)
+    expect(s.yourReturn).toBeGreaterThan(0.002)
+    expect(s.yourReturn).toBeLessThan(0.004)
     expect(s.trades).toBe(0)
   })
   it('never beats per-tick hindsight, and per-second hindsight beats buy and hold', () => {
@@ -136,7 +140,63 @@ describe('season account', () => {
   it('starts a round from any balance', () => {
     const r = createRound(generateMarket(9), 5_000_000)
     advanceTo(r, PLAY_TICKS)
-    expect(summarize(r).finalEquity).toBe(5_000_000)
-    expect(summarize(r).yourReturn).toBe(0)
+    expect(summarize(r).startEquity).toBe(5_000_000)
+    expect(summarize(r).finalEquity).toBeCloseTo(5_000_000 * (1 + CASH_RATE_PER_TICK) ** PLAY_TICKS, 4)
+  })
+})
+
+describe('products', () => {
+  it('keeps every product series positive and sized', () => {
+    for (const key of PRODUCT_ORDER) {
+      for (let s = 0; s < 50; s++) {
+        const m = generateMarket(s, key)
+        expect(m.product).toBe(key)
+        expect(m.prices.every((p) => p > 0 && Number.isFinite(p))).toBe(true)
+        expect(m.feeRate).toBe(PRODUCTS[key].fee)
+        if (key === 'lev2') expect(m.underlying).toHaveLength(m.prices.length)
+      }
+    }
+  })
+  it('makes the leveraged product move twice its index each tick', () => {
+    const m = generateMarket(77, 'lev2')
+    const u = m.underlying!
+    for (let i = 1; i < 50; i++) {
+      expect(m.prices[i] / m.prices[i - 1] - 1).toBeCloseTo(2 * (u[i] / u[i - 1] - 1), 10)
+    }
+  })
+  it('hides the asset name in headlines during the round', () => {
+    for (const key of PRODUCT_ORDER) {
+      for (let s = 0; s < 30; s++) {
+        const m = generateMarket(s, key)
+        for (const n of m.news) expect(n.blindHeadline).not.toContain(m.company.name)
+      }
+    }
+  })
+  it('rotates the daily product by weekday', () => {
+    expect(dailyProduct('2026-10-01')).toBe('stock') // Thursday
+    expect(dailyProduct('2026-10-02')).toBe('lev2') // Friday
+    expect(dailyProduct('2026-10-03')).toBe('coin') // Saturday
+    expect(dailyProduct('2026-10-06')).toBe('bond') // Tuesday
+    expect(dailyProduct('2026-10-07')).toBe('gold') // Wednesday
+  })
+  it('explains every non-stock product with real numbers', () => {
+    expect(productLesson(generateMarket(1, 'stock'))).toBeNull()
+    for (const key of ['bond', 'gold', 'coin', 'lev2'] as const) {
+      for (let s = 0; s < 20; s++) {
+        const lesson = productLesson(generateMarket(s, key))
+        expect(lesson?.title).toBeTruthy()
+        expect(lesson?.line).toMatch(/%/)
+      }
+    }
+  })
+})
+
+describe('iEyo', () => {
+  it('picks the right ending', () => {
+    expect(iEyo('채권')).toBe('채권이에요')
+    expect(iEyo('금')).toBe('금이에요')
+    expect(iEyo('코인')).toBe('코인이에요')
+    expect(iEyo('레버리지 2배')).toBe('레버리지 2배예요')
+    expect(iEyo('주식')).toBe('주식이에요')
   })
 })

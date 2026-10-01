@@ -1,8 +1,13 @@
 import { PLAY_TICKS, playPrice, TICKS_PER_SECOND, type Market } from './market'
 
 export const START_EQUITY = 10_000_000
-/** Charged on every buy and every sell, so mashing the screen costs money. */
+/** Stock fee, charged on every buy and every sell. Other products set their own. */
 export const FEE_RATE = 0.001
+/**
+ * Interest on idle cash, per tick (about 0.3% over a round). Small on
+ * purpose: sitting out is a real choice, not a free win.
+ */
+export const CASH_RATE_PER_TICK = 0.0000075
 
 export type Round = {
   market: Market
@@ -11,6 +16,7 @@ export type Round = {
   holding: boolean
   equity: number
   fees: number
+  interest: number
   trades: number
   /** held[t] is true when the position was open from tick t to t + 1. */
   held: boolean[]
@@ -28,6 +34,7 @@ export function createRound(market: Market, startEquity = START_EQUITY): Round {
     holding: false,
     equity: startEquity,
     fees: 0,
+    interest: 0,
     trades: 0,
     held: [],
     equityCurve: [startEquity],
@@ -43,7 +50,7 @@ export function setHolding(round: Round, holding: boolean) {
   if (round.holding === holding) return
   // After the bell you can only close, never open.
   if (holding && isOver(round)) return
-  const fee = round.equity * FEE_RATE
+  const fee = round.equity * round.market.feeRate
   round.equity -= fee
   round.fees += fee
   round.holding = holding
@@ -60,6 +67,10 @@ export function advanceTo(round: Round, target: number) {
     const t = round.tick
     if (round.holding) {
       round.equity *= playPrice(round.market, t + 1) / playPrice(round.market, t)
+    } else {
+      const earned = round.equity * CASH_RATE_PER_TICK
+      round.equity += earned
+      round.interest += earned
     }
     round.held[t] = round.holding
     round.tick = t + 1
@@ -82,6 +93,7 @@ export type RoundResult = {
   perfectReturn: number
   trades: number
   fees: number
+  interest: number
   heldRatio: number
   held: boolean[]
   grade: Grade
@@ -132,6 +144,7 @@ export function summarize(round: Round): RoundResult {
     perfectReturn: perfectReturn(round.market),
     trades: round.trades,
     fees: round.fees,
+    interest: round.interest,
     heldRatio,
     held: [...round.held],
     grade: gradeFor(yourReturn, buyHoldReturn, heldRatio),

@@ -1,14 +1,15 @@
-import { dateKey, dayNumber, dailySeed, msUntilNextDay } from '../core/daily'
-import { direction, formatCountdown, formatPct, formatPrice, formatWon } from '../core/format'
+import { dateKey, dayNumber, dailySeed, msUntilNextDay, nextKey } from '../core/daily'
+import { dailyProduct, PRODUCTS, WEEKDAY_NAMES } from '../core/products'
+import { direction, formatCountdown, formatPct, formatPrice, formatWon, iEyo } from '../core/format'
 import { PROFILE_MIN_ROUNDS, profileFrom, TYPES } from '../core/habits'
 import { SEASON_START, seasonDaysLeft, seasonLabel } from '../core/season'
 import { generateMarket, HISTORY_TICKS, PLAY_TICKS, playPrice, type Market } from '../core/market'
 import { save, type SavedDaily } from '../core/storage'
-import { hashString } from '../core/rng'
 import type { Navigate, Screen } from './app'
 import { Chart } from './chart'
 import { h } from './dom'
 import { showIntro } from './intro'
+import { showProductSheet } from './products'
 import { shareResult } from './share'
 
 const weekday = ['일', '월', '화', '수', '목', '금', '토']
@@ -36,8 +37,13 @@ function squaresFor(market: Market, held: boolean[]) {
 export function homeScreen(go: Navigate): Screen {
   const key = dateKey()
   const day = dayNumber(key)
-  const market = generateMarket(dailySeed(key))
   const played = save.daily(key)
+  // A finished day keeps the product it was played with.
+  const productKey = played?.product ?? dailyProduct(key)
+  const product = PRODUCTS[productKey]
+  const market = generateMarket(dailySeed(key), productKey)
+  const tomorrow = nextKey(key)
+  const tomorrowProduct = PRODUCTS[dailyProduct(tomorrow)]
   const streak = save.streak(key)
   const history = save.habitHistory()
   const profile = profileFrom(history)
@@ -56,17 +62,19 @@ export function homeScreen(go: Navigate): Screen {
     h(
       'h1',
       { class: 'home-title' },
-      played ? '오늘 차트는 끝났어요' : '오늘의 차트가 열렸어요',
+      played ? '오늘 차트는 끝났어요' : `오늘은 ${iEyo(product.name)}`,
     ),
     h(
       'p',
       { class: 'home-lede' },
-      played ? '내일 0시에 새 차트가 올라와요.' : '모두가 같은 차트로 40초. 결과는 시즌 계좌에 그대로 쌓여요.',
+      played
+        ? `내일 0시에 ${tomorrowProduct.name} 차트가 열려요.`
+        : `${product.pitch} 모두가 같은 차트로 40초, 하루 한 번이에요.`,
     ),
   )
 
   const cleanups: Array<() => void> = []
-  const body = played ? playedCard(market, played, key, day, cleanups) : teaser(market, cleanups)
+  const body = played ? playedCard(market, played, key, day, cleanups) : teaser(market, product.name, cleanups)
 
   // Rules show once, right before the first round, when they matter.
   const withIntro = (start: () => void) => () => {
@@ -79,10 +87,7 @@ export function homeScreen(go: Navigate): Screen {
 
   const startDaily = withIntro(() => go({ name: 'play', mode: { kind: 'daily', key, day }, market }))
 
-  const startPractice = withIntro(() => {
-    const seed = hashString(`practice/${Date.now()}/${Math.random()}`)
-    go({ name: 'play', mode: { kind: 'practice' }, market: generateMarket(seed) })
-  })
+  const startPractice = withIntro(() => showProductSheet(go))
 
   const actions = h(
     'div',
@@ -110,6 +115,17 @@ export function homeScreen(go: Navigate): Screen {
     ),
     h(
       'button',
+      { class: 'list-row', onclick: () => withIntro(() => showProductSheet(go))() },
+      h('span', { class: 'list-label' }, '내일의 차트', h('small', null, '요일마다 상품이 바뀌어요')),
+      h(
+        'span',
+        { class: 'list-value' },
+        `${WEEKDAY_NAMES[new Date(`${tomorrow}T00:00:00Z`).getUTCDay()]} · ${tomorrowProduct.name}`,
+        h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
+      ),
+    ),
+    h(
+      'button',
       { class: 'list-row', onclick: () => go({ name: 'habits' }) },
       h(
         'span',
@@ -128,11 +144,12 @@ export function homeScreen(go: Navigate): Screen {
     ),
   )
 
-  const el = h('main', { class: 'screen' }, top, hero, body, list, actions)
+  // Fixed to one screen only while the shrinkable chart card is showing.
+  const el = h('main', { class: played ? 'screen' : 'screen home' }, top, hero, body, list, actions)
   return { el, destroy: () => cleanups.forEach((f) => f()) }
 }
 
-function teaser(market: Market, cleanups: Array<() => void>) {
+function teaser(market: Market, productName: string, cleanups: Array<() => void>) {
   const canvas = h('canvas', { 'aria-label': '오늘 차트의 시작 전 흐름' })
   const open = market.prices[0]
   const now = market.prices[HISTORY_TICKS]
@@ -143,7 +160,7 @@ function teaser(market: Market, cleanups: Array<() => void>) {
     h(
       'div',
       { class: 'teaser-head' },
-      h('span', null, '비공개 종목'),
+      h('span', null, `오늘의 ${productName} · 이름은 비공개`),
       h('span', null, '시작 전 12초'),
     ),
     h(
@@ -153,7 +170,7 @@ function teaser(market: Market, cleanups: Array<() => void>) {
       h('span', { class: `quote-change num ${direction(change)}` }, formatPct(change)),
     ),
     canvas,
-    h('p', { class: 'teaser-foot' }, '종목 이름은 끝나고 공개돼요. 등장하는 회사와 뉴스는 모두 가상이에요.'),
+    h('p', { class: 'teaser-foot' }, '이름은 끝나고 공개돼요. 등장하는 상품과 뉴스는 모두 가상이에요.'),
   )
   const chart = new Chart(canvas, market, { top: 8, right: 8, bottom: 8, left: 0 })
   const draw = () =>

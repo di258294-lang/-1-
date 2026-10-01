@@ -7,7 +7,7 @@ function marketOf(price: (t: number) => number, news: NewsEvent[] = []): Market 
   const prices = Array.from({ length: HISTORY_TICKS + PLAY_TICKS + 1 }, (_, i) =>
     price(Math.max(0, i - HISTORY_TICKS)),
   )
-  return { seed: 0, company: COMPANIES[0], prices, news }
+  return { seed: 0, product: 'stock', company: COMPANIES[0], prices, news, feeRate: 0.001 }
 }
 
 /** held[] that is true on [a, b) for each range. */

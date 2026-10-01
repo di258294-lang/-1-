@@ -2,12 +2,14 @@ import { direction, formatPct, formatWon } from '../core/format'
 import { analyzeRound, PROFILE_MIN_ROUNDS, profileFrom, roundInsight, TYPES } from '../core/habits'
 import { seasonLabel } from '../core/season'
 import { save } from '../core/storage'
-import { generateMarket, HISTORY_TICKS, PLAY_TICKS, TICKS_PER_SECOND, type Market } from '../core/market'
-import { hashString } from '../core/rng'
+import { HISTORY_TICKS, PLAY_TICKS, TICKS_PER_SECOND, type Market } from '../core/market'
+import { productLesson } from '../core/lessons'
+import { PRODUCTS, type ProductKey } from '../core/products'
 import type { RoundResult } from '../core/round'
 import type { Mode, Navigate, Screen } from './app'
 import { Chart } from './chart'
 import { h, icons, svg } from './dom'
+import { startPractice } from './products'
 import { shareResult } from './share'
 
 const KICKER = { warn: '이번 판에서 보인 습관', good: '이번 판에서 잘한 점', none: '이번 판의 습관' } as const
@@ -21,7 +23,15 @@ function row(label: string, value: number, me = false) {
   )
 }
 
-export function resultScreen(go: Navigate, mode: Mode, market: Market, result: RoundResult): Screen {
+export function resultScreen(
+  go: Navigate,
+  mode: Mode,
+  market: Market,
+  result: RoundResult,
+  unlocked: ProductKey[],
+): Screen {
+  const product = PRODUCTS[market.product]
+  const lesson = productLesson(market)
   const canvas = h('canvas', { 'aria-label': '가격 흐름과 내가 들고 있던 구간' })
   const chart = new Chart(canvas, market, { top: 18, right: 20, bottom: 18, left: 20 })
   const draw = () =>
@@ -40,10 +50,7 @@ export function resultScreen(go: Navigate, mode: Mode, market: Market, result: R
   requestAnimationFrame(draw)
   window.addEventListener('resize', draw)
 
-  const again = () => {
-    const seed = hashString(`practice/${Date.now()}/${Math.random()}`)
-    go({ name: 'play', mode: { kind: 'practice' }, market: generateMarket(seed) })
-  }
+  const again = () => startPractice(go, market.product)
 
   const share = () =>
     shareResult({
@@ -84,7 +91,7 @@ export function resultScreen(go: Navigate, mode: Mode, market: Market, result: R
     ...market.news.map((n) => {
       const sec = Math.floor(n.at / TICKS_PER_SECOND)
       const verdict =
-        n.kind === 'filing' ? '공시' : n.actual === n.implied ? '지라시 · 맞았어요' : '지라시 · 틀렸어요'
+        n.kind === 'filing' ? product.filingLabel : n.actual === n.implied ? '지라시 · 맞았어요' : '지라시 · 틀렸어요'
       return h(
         'div',
         { class: 'recap-item' },
@@ -102,9 +109,17 @@ export function resultScreen(go: Navigate, mode: Mode, market: Market, result: R
       { class: 'topbar' },
       h('button', { class: 'icon-btn', 'aria-label': '홈으로', onclick: () => go({ name: 'home' }) }, svg(icons.close)),
     ),
-    h('p', { class: 'result-title' }, mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : '연습 결과'),
+    h('p', { class: 'result-title' }, `${mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : '연습'} · ${product.name}`),
     h('h1', { class: 'result-grade' }, result.grade.title),
     h('p', { class: 'result-line' }, result.grade.line),
+    ...unlocked.map((k) =>
+      h(
+        'button',
+        { class: 'unlock', onclick: () => startPractice(go, k) },
+        h('span', null, '새 상품이 열렸어요 · ', h('b', null, PRODUCTS[k].name)),
+        h('span', { 'aria-hidden': 'true' }, '해보기 ›'),
+      ),
+    ),
     habitCard,
     h('div', { class: 'result-chart' }, canvas),
     h(
@@ -113,6 +128,15 @@ export function resultScreen(go: Navigate, mode: Mode, market: Market, result: R
       h('span', null, h('b', null, market.company.name), ` ${market.company.code}`),
       h('span', null, market.company.sector),
     ),
+    lesson
+      ? h(
+          'section',
+          { class: 'lesson-card' },
+          h('p', { class: 'habit-kicker' }, `${product.name}의 성격`),
+          h('h2', { class: 'habit-title' }, lesson.title),
+          h('p', { class: 'habit-line num' }, lesson.line),
+        )
+      : null,
     h(
       'section',
       { class: 'rows' },
@@ -130,7 +154,7 @@ export function resultScreen(go: Navigate, mode: Mode, market: Market, result: R
     h(
       'p',
       { class: 'fine num' },
-      `매매 ${result.trades}번 · 수수료 ${formatWon(result.fees)} · 보유 시간 ${heldPct}%`,
+      `매매 ${result.trades}번 · 수수료 ${formatWon(result.fees)} · 현금 이자 ${formatWon(result.interest)} · 보유 시간 ${heldPct}%`,
     ),
     recap,
     h(

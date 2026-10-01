@@ -1,5 +1,6 @@
 import { previousKey } from './daily'
 import type { HabitScores } from './habits'
+import { PRODUCT_ORDER, PRODUCTS, type ProductKey } from './products'
 import { accountAfter, accountBefore } from './season'
 
 export type SavedDaily = {
@@ -8,6 +9,7 @@ export type SavedDaily = {
   held: boolean[]
   trades: number
   title: string
+  product?: ProductKey
   /** Set when a daily round started but never finished (reload, app kill). */
   abandoned?: boolean
 }
@@ -107,6 +109,20 @@ export const save = {
   },
   accountAfter(key: string) {
     return accountAfter(file().daily, key)
+  },
+  /** Finished rounds of any kind; opens new products in practice. */
+  roundsPlayed() {
+    const f = file()
+    return f.practice.rounds + Object.values(f.daily).filter((d) => !d.abandoned).length
+  },
+  /** A product is open once you have played enough, or met it as a daily chart. */
+  isUnlocked(key: ProductKey) {
+    const f = file()
+    if (this.roundsPlayed() >= PRODUCTS[key].unlockAt) return true
+    return Object.values(f.daily).some((d) => d.product === key)
+  },
+  unlockedProducts(): ProductKey[] {
+    return PRODUCT_ORDER.filter((k) => this.isUnlocked(k))
   },
   seenIntro() {
     return file().seenIntro

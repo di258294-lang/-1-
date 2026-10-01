@@ -7,12 +7,11 @@ import {
   TYPES,
   type HabitKey,
 } from '../core/habits'
-import { generateMarket } from '../core/market'
-import { hashString } from '../core/rng'
 import { profileShareText } from '../core/share'
 import { save } from '../core/storage'
 import type { Navigate, Screen } from './app'
 import { h, icons, svg } from './dom'
+import { showProductSheet } from './products'
 import { shareOut } from './share'
 
 const MEASURES: Record<HabitKey, string> = {
@@ -27,10 +26,7 @@ export function habitsScreen(go: Navigate): Screen {
   const history = save.habitHistory()
   const profile = profileFrom(history)
 
-  const practice = () => {
-    const seed = hashString(`practice/${Date.now()}/${Math.random()}`)
-    go({ name: 'play', mode: { kind: 'practice' }, market: generateMarket(seed) })
-  }
+  const practice = () => showProductSheet(go)
 
   const top = h(
     'div',

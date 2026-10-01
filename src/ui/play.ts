@@ -1,5 +1,6 @@
 import { formatPct, formatWon, formatWonDelta, direction } from '../core/format'
 import { HISTORY_TICKS, PLAY_TICKS, playPrice, ROUND_SECONDS, TICKS_PER_SECOND, type Market } from '../core/market'
+import { PRODUCTS } from '../core/products'
 import { save } from '../core/storage'
 import { analyzeRound } from '../core/habits'
 import { advanceTo, createRound, isOver, setHolding, START_EQUITY, summarize } from '../core/round'
@@ -14,6 +15,8 @@ const COUNTDOWN_MS = 2400
 
 export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   // Daily rounds trade the season account; practice always starts fresh.
+  const product = PRODUCTS[market.product]
+  const unlockedBefore = save.unlockedProducts()
   const round = createRound(market, mode.kind === 'daily' ? save.accountBefore(mode.key) : START_EQUITY)
 
   const clock = h('span', { class: 'play-clock num' }, `0:${ROUND_SECONDS}`)
@@ -73,7 +76,11 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
         h('button', { class: 'icon-btn', 'aria-label': '나가기', onclick: quit }, svg(icons.close)),
         clock,
       ),
-      h('p', { class: 'equity-label' }, mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : '연습 모드'),
+      h(
+        'p',
+        { class: 'equity-label' },
+        `${mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : '연습'} · ${product.name}`,
+      ),
       equity,
       delta,
     ),
@@ -162,7 +169,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
       return
     }
     const n = market.news[idx]
-    newsTag.textContent = n.kind === 'filing' ? '공시' : '지라시'
+    newsTag.textContent = n.kind === 'filing' ? product.filingLabel : '지라시'
     newsTag.className = `news-tag ${n.kind}`
     newsText.textContent = n.blindHeadline
     news.classList.add('show')
@@ -191,6 +198,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
         held: result.held,
         trades: result.trades,
         title: result.grade.title,
+        product: market.product,
       })
     } else {
       save.recordPractice(result.yourReturn)
@@ -199,7 +207,8 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
     if (habits.trades > 0) {
       save.recordHabits(mode.kind === 'daily' ? `d:${mode.key}` : `p:${Date.now()}`, habits.scores)
     }
-    go({ name: 'result', mode, market, result })
+    const unlocked = save.unlockedProducts().filter((k) => !unlockedBefore.includes(k))
+    go({ name: 'result', mode, market, result, unlocked })
   }
 
   const frame = (now: number) => {

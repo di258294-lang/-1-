@@ -1,6 +1,7 @@
 import { PLAY_TICKS, playPrice, type Market } from './market'
 import type { RoundResult } from './round'
 import { formatPct } from './format'
+import { PRODUCTS } from './products'
 import { HABIT_KEYS, HABIT_LABELS, TYPES, type Profile } from './habits'
 
 const SLICES = 10
@@ -35,7 +36,8 @@ export function shareText(opts: {
   url: string
 }) {
   const { market, result, day, url } = opts
-  const head = day === null ? 'HOLD 연습' : `HOLD #${day}`
+  const name = PRODUCTS[market.product].name
+  const head = day === null ? `HOLD 연습 · ${name}` : `HOLD #${day} · ${name}`
   return [
     `${head}  ${formatPct(result.yourReturn, 1)}`,
     `그냥 들고 있었으면 ${formatPct(result.buyHoldReturn, 1)}`,

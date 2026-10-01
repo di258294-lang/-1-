@@ -24,6 +24,12 @@ export function msUntilNextDay(now = Date.now()) {
   return next - kst
 }
 
+export function nextKey(key: string) {
+  const d = new Date(`${key}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
 export function previousKey(key: string) {
   const d = new Date(`${key}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() - 1)
