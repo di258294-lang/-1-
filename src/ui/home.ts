@@ -20,6 +20,7 @@ function dateLabel(key: string) {
   return `${m}월 ${d}일 ${wd}요일`
 }
 
+// Same slicing as timelineSquares() in core/share.ts; keep the two in step.
 function squaresFor(market: Market, held: boolean[]) {
   const row = h('div', { class: 'squares', 'aria-hidden': 'true' })
   const per = market.playTicks / 10
@@ -85,7 +86,11 @@ export function homeScreen(go: Navigate): Screen {
     })
   }
 
-  const startDaily = withIntro(() => go({ name: 'play', mode: { kind: 'daily', key, day }, market }))
+  const startDaily = withIntro(() => {
+    // The page may have sat open past midnight: never play yesterday's chart.
+    if (dateKey() !== key) return go({ name: 'home' })
+    go({ name: 'play', mode: { kind: 'daily', key, day }, market })
+  })
 
   const startPractice = withIntro(() => showProductSheet(go))
 
@@ -138,6 +143,21 @@ export function homeScreen(go: Navigate): Screen {
       ),
     ),
   )
+
+  // Background timers freeze, so also check when the app comes back.
+  const checkDate = () => {
+    if (!document.hidden && dateKey() !== key) go({ name: 'home' })
+  }
+  const dateTimer = window.setInterval(checkDate, 1000)
+  document.addEventListener('visibilitychange', checkDate)
+  window.addEventListener('focus', checkDate)
+  window.addEventListener('pageshow', checkDate)
+  cleanups.push(() => {
+    clearInterval(dateTimer)
+    document.removeEventListener('visibilitychange', checkDate)
+    window.removeEventListener('focus', checkDate)
+    window.removeEventListener('pageshow', checkDate)
+  })
 
   // Fixed to one screen only while the shrinkable chart card is showing.
   const el = h('main', { class: played ? 'screen' : 'screen home' }, top, hero, body, list, actions)
@@ -195,7 +215,6 @@ function playedCard(market: Market, saved: SavedDaily, key: string, day: number,
   const next = h('p', { class: 'next-in num' })
   const tick = () => {
     next.textContent = `다음 차트까지 ${formatCountdown(msUntilNextDay())}`
-    if (msUntilNextDay() < 1000) setTimeout(() => location.reload(), 1200)
   }
   tick()
   const timer = window.setInterval(tick, 1000)

@@ -1,19 +1,39 @@
 import { formatPct } from '../core/format'
-import { luckTest, luckVerdict } from '../core/luck'
+import { luckTest, luckVerdict, type LuckResult } from '../core/luck'
 import type { Market } from '../core/market'
 import { h } from './dom'
 
 const BINS = 28
 
+export function runLuckTest(market: Market, held: boolean[]) {
+  // Long rounds are 7.5x the ticks; fewer replays keep the screen quick.
+  return luckTest(market, held, market.length === 'long' ? 400 : 1000)
+}
+
+/** Whether luckTest() will have anything to compare (mirrors its early exit). */
+export function luckTestApplies(market: Market, held: boolean[]) {
+  let heldTicks = 0
+  for (let t = 0; t < market.playTicks; t++) if (held[t]) heldTicks++
+  return heldTicks > 0 && heldTicks < market.playTicks - 2
+}
+
+/** Same footprint as the card, shown while the replays run. */
+export function luckPlaceholder() {
+  return h(
+    'section',
+    { class: 'luck luck-pending', 'aria-busy': 'true' },
+    h('p', { class: 'habit-kicker' }, '운일까 실력일까'),
+    h('h2', { class: 'habit-title' }, '무작위로 누른 판들과 비교하고 있어요'),
+    h('div', { class: 'hist-bars', 'aria-hidden': 'true' }),
+  )
+}
+
 /**
  * Skill or luck: where this round sits among random traders with the same
  * style on the same chart, drawn as a histogram with the player marked.
+ * `bridge` is an extra sentence shown under the verdict.
  */
-export function luckCard(market: Market, held: boolean[], onResult?: (percentile: number) => void) {
-  // Long rounds are 7.5x the ticks; fewer replays keep the screen instant.
-  const result = luckTest(market, held, market.length === 'long' ? 400 : 1000)
-  if (!result) return null
-  onResult?.(result.percentile)
+export function luckCard(result: LuckResult, bridge?: string | null) {
   const verdict = luckVerdict(result)
   const xs = result.nullReturns
   // Trim the extreme 1% on each side so one wild replay doesn't flatten the chart.
@@ -54,6 +74,7 @@ export function luckCard(market: Market, held: boolean[], onResult?: (percentile
       ),
     ),
     h('p', { class: 'habit-line' }, verdict.line),
+    bridge ? h('p', { class: 'habit-line luck-bridge' }, bridge) : null,
     h(
       'p',
       { class: 'luck-note' },
