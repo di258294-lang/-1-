@@ -7,6 +7,7 @@ import {
   roundInsight,
   tradesFrom,
   TYPE_MIN,
+  TYPES,
   type HabitRecord,
   type HabitScores,
 } from './habits'
@@ -199,7 +200,7 @@ describe('profileFrom', () => {
 
   it('needs five rounds', () => {
     expect(profileFrom([zero, zero, zero, zero].map((s) => recordOf(s)))).toBeNull()
-    expect(profileFrom([zero, zero, zero, zero, zero].map((s) => recordOf(s)))?.type).toBe('machine')
+    expect(profileFrom([zero, zero, zero, zero, zero].map((s) => recordOf(s)))?.type).toBe('steady')
   })
 
   it('picks the strongest habit over the recent window', () => {
@@ -224,24 +225,38 @@ describe('profileFrom', () => {
     expect(profileFrom(times(10, { counts }))?.type).toBe('holder')
     // The same counts with sells while down too are not a habit.
     const even = { sellUp: 1, expUp: 30, sellDown: 2, expDown: 60 }
-    expect(profileFrom(times(10, { counts: even }))?.type).toBe('machine')
+    expect(profileFrom(times(10, { counts: even }))?.type).not.toBe('holder')
   })
 
-  it('calls barely playing a watcher, not a machine', () => {
+  it('records which evidence flagged the holder habit, to pick its mission', () => {
+    const counts = { sellUp: 1, expUp: 30, sellDown: 0, expDown: 60 }
+    expect(profileFrom(times(10, { counts }))?.holderBasis).toBe('rates')
+    expect(profileFrom(times(10, { trades: 3 }, { ...zero, holder: 0.8 }))?.holderBasis).toBe('depth')
+    expect(profileFrom(times(5))?.holderBasis).toBeUndefined()
+    expect(profileFrom(times(5, { heldRatio: 0.7 }))?.held).toBeCloseTo(0.7)
+  })
+
+  it('calls barely playing a watcher, by participation only', () => {
     expect(profileFrom(times(5, { heldRatio: 0.01, trades: 1 }))?.type).toBe('watcher')
     expect(profileFrom(times(5, { heldRatio: 0.5, trades: 1 }))?.type).toBe('watcher')
     expect(profileFrom(times(5, { heldRatio: 0.1, trades: 4 }))?.type).toBe('watcher')
+    // Even with a great luck test.
+    expect(profileFrom(times(5, { heldRatio: 0.1, trades: 4, luckPct: 0.9 }))?.type).toBe('watcher')
   })
 
-  it('needs a better-than-random luck test for the machine type when it is known', () => {
-    expect(profileFrom(times(5, { luckPct: 0.4 }))?.type).toBe('watcher')
+  it('gives active players with no habit 기계형 only with better-than-random timing, else 탐색 중', () => {
+    // Stop-loss players rank below the median; they are in the market, so never 관망형.
+    expect(profileFrom(times(5, { luckPct: 0.4 }))?.type).toBe('steady')
     expect(profileFrom(times(5, { luckPct: 0.7 }))?.type).toBe('machine')
-    // Two known results are too few to judge; unknown luck does not block it.
-    expect(profileFrom([...times(2, { luckPct: 0.1 }), ...times(3)])?.type).toBe('machine')
+    // Two known results are too few to claim better timing.
+    expect(profileFrom([...times(2, { luckPct: 0.9 }), ...times(3)])?.type).toBe('steady')
+    expect(TYPES.steady.name).toBe('탐색 중')
+    expect(TYPES.watcher.line).not.toMatch(/대부분 지켜보/)
+    expect(TYPES.machine.line).not.toMatch(/손실은 빨리 끊고/)
   })
 
   it('does not count records migrated without participation as barely playing', () => {
-    expect(profileFrom(times(5, { heldRatio: 0, trades: 1, at: '' }))?.type).toBe('machine')
+    expect(profileFrom(times(5, { heldRatio: 0, trades: 1, at: '' }))?.type).toBe('steady')
   })
 })
 
@@ -265,18 +280,35 @@ describe('habit bands and trends (display only)', () => {
     expect(habitBand(TYPE_MIN)).toBe('high')
   })
 
-  it('reports a fall only when it is bigger than the noise', () => {
-    const falling = [0.7, 0.6, 0.65, 0.62, 0.68, 0.5, 0.4, 0.2, 0.25, 0.3, 0.28, 0.33].map((x, i) => rec(x, i))
-    expect(habitTrend(falling, 'holder')).toMatchObject({ change: 'down', rounds: 12 })
-    const noisy = [0.9, 0, 0.8, 0.1, 0.7, 0.2, 0.9, 0, 0.6, 0.5].map((x, i) => rec(x, i))
+  // 5 selection rounds, then a 10-round baseline (rounds 6-15), then the rest.
+  const series = (first: number[], base: number, rest: number[]) =>
+    [...first, ...Array.from({ length: 10 }, (_, i) => base + (i % 2 ? 0.02 : -0.02)), ...rest].map((x, i) => rec(x, i))
+
+  it('reports a fall only when a permutation test clears p < 0.01 and the change is 5 points or more', () => {
+    const falling = series([0.7, 0.7, 0.7, 0.7, 0.7], 0.6, Array.from({ length: 10 }, (_, i) => 0.2 + (i % 2 ? 0.03 : -0.03)))
+    expect(habitTrend(falling, 'holder')).toMatchObject({ change: 'down', rounds: 25, evaluatedAt: 25 })
+    const noisy = [0.1, 0.1, 0.1, 0.1, 0.1, 0.9, 0, 0.8, 0.1, 0.7, 0.2, 0.9, 0, 0.6, 0.5, 0.8, 0.1, 0.6, 0.2, 0.9, 0, 0.7, 0.3, 0.4, 0.1].map((x, i) => rec(x, i))
     expect(habitTrend(noisy, 'holder')?.change).toBe('same')
+    // Clear in the test but under 5 points: not worth naming.
+    const tiny = series([0, 0, 0, 0, 0], 0.1, Array.from({ length: 10 }, () => 0.06))
+    expect(habitTrend(tiny, 'holder')?.change).toBe('same')
   })
 
-  it('needs two full windows of rounds where the habit was measurable', () => {
-    const few = [0.5, 0.5, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0.1].map((x, i) => rec(x, i))
-    expect(habitTrend(few, 'holder')).toBeNull()
-    const gaps = [...few, rec(0.1, 9, false)]
-    expect(habitTrend(gaps, 'holder')).toBeNull()
-    expect(habitTrend([...few, rec(0.1, 10)], 'holder')?.change).toBe('down')
+  it('compares against rounds 6-15, never the first 5 that picked the profile', () => {
+    // A very high start that is never repeated is not a fall.
+    const rtm = series([0.95, 0.95, 0.95, 0.95, 0.95], 0.3, Array.from({ length: 10 }, (_, i) => 0.3 + (i % 2 ? 0.02 : -0.02)))
+    const t = habitTrend(rtm, 'holder')!
+    expect(t.change).toBe('same')
+    expect(t.from).toBeCloseTo(0.3, 6)
+  })
+
+  it('waits for 25 measurable rounds and re-evaluates only every 5', () => {
+    const falling = series([0.7, 0.7, 0.7, 0.7, 0.7], 0.6, Array.from({ length: 10 }, () => 0.2))
+    expect(habitTrend(falling.slice(0, 24), 'holder')).toBeNull()
+    expect(habitTrend([...falling.slice(0, 24), rec(0.2, 99, false)], 'holder')).toBeNull()
+    // Rounds 26-29 keep the answer from round 25.
+    const more = [...falling, rec(0.9, 30), rec(0.9, 31), rec(0.9, 32), rec(0.9, 33)]
+    expect(habitTrend(more, 'holder')).toMatchObject({ change: 'down', evaluatedAt: 25, rounds: 29 })
+    expect(habitTrend(more, 'holder')).toEqual(habitTrend(more, 'holder'))
   })
 })

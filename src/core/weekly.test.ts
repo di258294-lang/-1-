@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { dailySeed } from './daily'
 import { COMPANIES, generateMarket, type Market, type NewsEvent } from './market'
+import { cashRatePerTick } from './round'
 import {
+  benchReturn,
   CUT_LOSS_TICKS,
+  dayVerdict,
   longestLoss,
   passesRule,
   pastWeeks,
@@ -89,8 +92,17 @@ describe('weekly rule', () => {
     expect(WEEKLY_RULES).toContain(weeklyRule('2025-01-01'))
   })
 
-  it('keeps every title short enough for one home row', () => {
-    for (const r of WEEKLY_RULES) expect([...r.title].length).toBeLessThanOrEqual(16)
+  it('keeps every title to two short lines on the home row', () => {
+    for (const r of WEEKLY_RULES) expect([...r.title].length).toBeLessThanOrEqual(30)
+  })
+
+  it('names the real measure: "그냥 들고 있는 것보다", never "시장 이기기" or "수익 내기"', () => {
+    for (const r of WEEKLY_RULES) {
+      expect(r.title).not.toMatch(/시장 이기기|수익 내기/)
+      if (r.key !== 'cutLoss') expect(r.title).toContain('그냥 들고 있는 것보다')
+      expect(r.title + r.detail).not.toMatch(/지라시|공시/)
+    }
+    expect(WEEKLY_RULES.find((r) => r.key === 'noRumor')!.detail).toContain('소문이 없던 날은 세지 않아요')
   })
 })
 
@@ -102,19 +114,32 @@ describe('passesRule', () => {
     }
   })
 
-  it('fewTrades: 3 trades or fewer and beat the market', () => {
-    expect(passesRule('fewTrades', day({ trades: 3 }), noMarket)).toBe(true)
+  it('compares with the exposure-matched benchmark h·(holding) + (1 − h)·(cash)', () => {
+    // Held 110 of 400 ticks.
+    const d = day({ buyHoldReturn: 0.04 })
+    const cash = (1 + cashRatePerTick(flat)) ** PLAY_TICKS - 1
+    expect(benchReturn(d, flat)).toBeCloseTo(0.275 * 0.04 + 0.725 * cash, 12)
+  })
+
+  it('fewTrades: 3 trades or fewer and beat holding the same share', () => {
+    expect(passesRule('fewTrades', day({ trades: 3 }), () => flat)).toBe(true)
     expect(passesRule('fewTrades', day({ trades: 4 }), noMarket)).toBe(false)
-    expect(passesRule('fewTrades', day({ yourReturn: 0.01 }), noMarket)).toBe(false)
+    expect(passesRule('fewTrades', day({ yourReturn: 0.002 }), () => flat)).toBe(false)
+    // Behind plain holding (+5%) but ahead of holding 27.5% of the money: a pass.
+    expect(passesRule('fewTrades', day({ yourReturn: 0.02, buyHoldReturn: 0.05 }), () => flat)).toBe(true)
+    // A small hold on a falling day no longer passes for free: it must beat its own share of the fall.
+    expect(passesRule('fewTrades', day({ yourReturn: -0.02, buyHoldReturn: -0.05 }), () => flat)).toBe(false)
   })
 
-  it('halfCash: held half the time or less and beat the market', () => {
-    expect(passesRule('halfCash', day({ held: heldOn([0, 200]) }), noMarket)).toBe(true)
-    expect(passesRule('halfCash', day({ held: heldOn([0, 201]) }), noMarket)).toBe(false)
-    expect(passesRule('halfCash', day({ yourReturn: -0.01 }), noMarket)).toBe(false)
+  it('halfCash: held 20% to 50% of the time and beat holding the same share', () => {
+    expect(passesRule('halfCash', day({ held: heldOn([0, 200]) }), () => flat)).toBe(true)
+    expect(passesRule('halfCash', day({ held: heldOn([0, 201]) }), () => flat)).toBe(false)
+    expect(passesRule('halfCash', day({ held: heldOn([0, 79]) }), () => flat)).toBe(false)
+    expect(passesRule('halfCash', day({ held: heldOn([0, 80]) }), () => flat)).toBe(true)
+    expect(passesRule('halfCash', day({ yourReturn: -0.01 }), () => flat)).toBe(false)
   })
 
-  it('noRumor: no buy or sell between a rumor and its price move, and a profit', () => {
+  it('noRumor: no buy or sell between a rumor and its price move, and beat holding the same share', () => {
     const m = marketOf(() => 10_000, [rumor(100)])
     expect(passesRule('noRumor', day({ held: heldOn([10, 60]) }), () => m)).toBe(true)
     // Bought on the headline.
@@ -124,6 +149,13 @@ describe('passesRule', () => {
     // Bought once the price moved: a reaction to the price, not the rumor.
     expect(passesRule('noRumor', day({ held: heldOn([116, 160]) }), () => m)).toBe(true)
     expect(passesRule('noRumor', day({ held: heldOn([10, 60]), yourReturn: -0.001 }), () => m)).toBe(false)
+    // Holding all day on an up day is not "beating" anything.
+    expect(passesRule('noRumor', day({ held: heldOn([0, PLAY_TICKS]), trades: 1, yourReturn: 0.05, buyHoldReturn: 0.052 }), () => m)).toBe(false)
+  })
+
+  it('noRumor: a chart with no rumor is not judged, and does not count', () => {
+    expect(dayVerdict('noRumor', day(), () => flat)).toBe('skip')
+    expect(passesRule('noRumor', day(), () => flat)).toBe(false)
   })
 
   it('cutLoss: never more than 2 s under the buy price, and held 5 s or more', () => {
@@ -169,20 +201,30 @@ describe('weeklyProgress', () => {
       '2026-10-06': day({ key: '2026-10-06', trades: 0, held: heldOn() }),
       '2026-10-07': day({ key: '2026-10-07', abandoned: true }),
     }
-    const m = marketOf(() => 10_000)
+    // This week's rule is noRumor: the chart needs a rumor for a day to count.
+    expect(rule.key).toBe('noRumor')
+    const m = marketOf(() => 10_000, [rumor(300)])
     const p = weeklyProgress(today, (k) => saved[k], () => m)
     expect(p.rule).toBe(rule)
     expect(p.start).toBe('2026-10-05')
     expect(p.days.map((d) => d.mark)).toEqual(['pass', 'fail', 'none', 'today', 'future', 'future', 'future'])
     expect(p.passed).toBe(1)
-    expect(p.goal).toBe(WEEKLY_GOAL)
+    // noRumor counts only days with a rumor (about 4 a week), so it needs 2.
+    expect(p.goal).toBe(2)
     expect(p.done).toBe(false)
 
     saved['2026-10-06'] = day({ key: '2026-10-06' })
-    saved['2026-10-08'] = day({ key: '2026-10-08' })
     const done = weeklyProgress(today, (k) => saved[k], () => m)
-    expect(done.passed).toBe(3)
+    expect(done.passed).toBe(2)
     expect(done.done).toBe(true)
+
+    // Other rules keep the usual goal.
+    expect(weeklyProgress(today, (k) => saved[k], () => m, '2026-10-12').goal).toBe(WEEKLY_GOAL)
+
+    // No rumor on the chart: the day is marked as not counted.
+    const quiet = weeklyProgress(today, (k) => saved[k], () => flat)
+    expect(quiet.days[0].mark).toBe('skip')
+    expect(quiet.passed).toBe(0)
   })
 
   it('counts a day whose check throws as not passed', () => {

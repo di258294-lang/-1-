@@ -34,13 +34,21 @@ function progressRow(p: MissionProgress) {
 const HEADLINE: Record<MissionOutcome['outcome'], string> = {
   pass: '이번 판은 성공이에요',
   fail: '이번 판은 아직이에요',
-  ineligible: '이번 판은 판정하지 않았어요',
+  ineligible: '이번 판은 미션에 해당하는 장면이 없었어요',
   new: '',
+}
+
+/** What completing means: kept the goal in recent rounds, not "changed the habit". */
+function doneLine(p: MissionProgress) {
+  const kept = p.need === p.window ? `${p.need}판 연속` : `최근 ${p.window}판 중 ${p.need}판에서`
+  return `${kept} 목표를 지켰어요. 습관으로 굳었는지는 2주 뒤에 한 번 더 볼게요.`
 }
 
 /**
  * The mission verdict for the result screen: what was asked, what this
- * round's number was, and how far along the mission is.
+ * round's number was, and how far along the mission is. When the mission
+ * was swapped without being completed, its progress no longer applies, so
+ * the reason is shown instead.
  */
 export function missionCard(outcome: MissionOutcome) {
   const def = MISSIONS[outcome.id]
@@ -48,12 +56,14 @@ export function missionCard(outcome: MissionOutcome) {
   return h(
     'section',
     { class: `habit-card mission-card mission-${outcome.completed ? 'done' : outcome.outcome}` },
-    h('p', { class: 'habit-kicker' }, `${outcome.recheck ? '유지 확인 미션' : '미션'} · ${def.title}`),
+    h('p', { class: 'habit-kicker' }, `${outcome.recheck ? '다시 해보기 미션' : '미션'} · ${def.title}`),
     h('h2', { class: 'habit-title' }, title),
     h('p', { class: 'habit-line num' }, outcome.measure),
     outcome.completed
-      ? h('p', { class: 'habit-line' }, '같은 습관을 여러 판에 걸쳐 바꿨어요. 2주 뒤에 한 번 더 확인해요.')
-      : progressRow(outcome.progress),
+      ? h('p', { class: 'habit-line' }, doneLine(outcome.progress))
+      : outcome.reason
+        ? h('p', { class: 'habit-line' }, outcome.reason)
+        : progressRow(outcome.progress),
   )
 }
 
@@ -71,13 +81,16 @@ export function nextAction(outcome: MissionOutcome | null, compact = false) {
   if (!fresh && compact) {
     return h('div', { class: 'tip next-action' }, h('span', null, '다음 판에서 해볼 것'), h('b', null, def.goal))
   }
-  const label = fresh ? (pick.recheck ? '다음 판 미션 · 유지 확인' : outcome?.outcome === 'new' ? '다음 판 미션' : '새 미션') : '다음 판에서 해볼 것'
+  const label = fresh ? (pick.recheck ? '다음 판 미션 · 다시 해보기' : outcome?.outcome === 'new' ? '다음 판 미션' : '새 미션') : '다음 판에서 해볼 것'
+  const goal = def.goal.replace(/[.。]$/, '')
   return h(
     'div',
     { class: 'tip next-action' },
     h('span', null, label),
     h('b', null, def.title),
-    h('span', { class: 'next-goal' }, fresh ? `${def.goal}. ${def.why}` : def.goal),
+    // Why it changed, when it changed without being completed (the card above may be folded).
+    fresh && outcome?.reason && !compact ? h('span', { class: 'next-goal' }, outcome.reason) : null,
+    h('span', { class: 'next-goal' }, fresh ? `${goal}. ${def.why}` : def.goal),
   )
 }
 
@@ -89,7 +102,7 @@ export function activeMissionBlock() {
   return h(
     'section',
     { class: 'habit-card mission-card' },
-    h('p', { class: 'habit-kicker' }, active.recheck ? '지금 미션 · 유지 확인' : '지금 미션'),
+    h('p', { class: 'habit-kicker' }, active.recheck ? '지금 미션 · 다시 해보기' : '지금 미션'),
     h('h2', { class: 'habit-title' }, def.title),
     h('p', { class: 'habit-line' }, def.goal),
     h('p', { class: 'habit-line' }, def.why),
@@ -98,7 +111,7 @@ export function activeMissionBlock() {
 }
 
 /**
- * One-line chip for the home screen: "지금 미션 · 한 번은 길게 들고 있기 · 1/2".
+ * One-line chip for the home screen: "지금 미션 · 한 번은 길게 들고 있기 · 3번 성공하면 완료 · 지금 1번".
  * Null when there is no mission yet (before the first finished round).
  */
 export function missionChip(onOpen?: () => void): HTMLElement | null {
@@ -109,12 +122,8 @@ export function missionChip(onOpen?: () => void): HTMLElement | null {
   return h(
     'button',
     { class: 'list-row mission-chip', onclick: onOpen ? () => onOpen() : undefined, 'aria-label': `지금 미션 ${def.title}, ${progressText(p)}` },
-    h('span', { class: 'list-label' }, '지금 미션', h('small', null, def.title)),
-    h(
-      'span',
-      { class: 'list-value num' },
-      progressShort(p),
-      onOpen ? h('span', { class: 'chev', 'aria-hidden': 'true' }, '›') : null,
-    ),
+    // Words, not "1/3": the progress reads as its own line under the title.
+    h('span', { class: 'list-label' }, '지금 미션', h('small', null, def.title), h('small', { class: 'num' }, progressShort(p))),
+    onOpen ? h('span', { class: 'list-value' }, h('span', { class: 'chev', 'aria-hidden': 'true' }, '›')) : null,
   )
 }

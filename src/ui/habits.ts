@@ -4,9 +4,13 @@ import {
   HABIT_LABELS,
   habitBand,
   habitTrend,
+  NO_HABIT_TYPES,
   PROFILE_MIN_ROUNDS,
   PROFILE_WINDOW,
   profileFrom,
+  TREND_MIN_ROUNDS,
+  TREND_SKIP,
+  TREND_STEP,
   TREND_WINDOW,
   TYPES,
   type HabitKey,
@@ -31,10 +35,10 @@ const MEASURES: Record<HabitKey, string> = {
 
 const CHANGE: Record<HabitTrend['change'], string> = { down: '줄었어요', up: '늘었어요', same: '비슷해요' }
 
-/** "처음 5판 62 → 최근 5판 31 · 줄었어요" */
+/** "6~15판 평균 62 → 최근 10판 31 · 줄었어요" */
 function trendLine(t: HabitTrend) {
   const n = (x: number) => Math.round(x * 100)
-  return `처음 ${TREND_WINDOW}판 ${n(t.from)} → 최근 ${TREND_WINDOW}판 ${n(t.to)} · ${CHANGE[t.change]}`
+  return `${TREND_SKIP + 1}~${TREND_SKIP + TREND_WINDOW}판 평균 ${n(t.from)} → 최근 ${TREND_WINDOW}판 ${n(t.to)} · ${CHANGE[t.change]}`
 }
 
 export function habitsScreen(go: Navigate): Screen {
@@ -83,8 +87,9 @@ export function habitsScreen(go: Navigate): Screen {
 
   const type = TYPES[profile.type]
   const strongest = HABIT_KEYS.reduce((a, b) => (profile.scores[b] > profile.scores[a] ? b : a))
-  // 관망형 and 기계형 have no leading habit: nothing is highlighted for them.
-  const named = profile.type !== 'machine' && profile.type !== 'watcher'
+  // 관망형, 탐색 중 and 기계형 have no leading habit: nothing is highlighted for them.
+  const named = !NO_HABIT_TYPES.includes(profile.type)
+  const allLow = HABIT_KEYS.every((k) => habitBand(profile.scores[k]) === 'low')
   const trends = Object.fromEntries(HABIT_KEYS.map((k) => [k, habitTrend(history, k)])) as Record<HabitKey, HabitTrend | null>
   const bars = h(
     'section',
@@ -114,6 +119,7 @@ export function habitsScreen(go: Navigate): Screen {
       h('p', { class: 'result-title' }, `최근 ${profile.rounds}판으로 본 내 성향`),
       h('h1', { class: 'type-name' }, type.name),
       h('p', { class: 'type-line' }, type.line),
+      allLow ? h('p', { class: 'fine' }, '다섯 가지 모두 낮음이라 유형은 판마다 바뀔 수 있어요.') : null,
       activeMissionBlock() ?? h('div', { class: 'tip' }, h('span', null, '다음 판에서 해볼 것'), h('b', null, type.tip)),
       bars,
       h(
@@ -121,13 +127,13 @@ export function habitsScreen(go: Navigate): Screen {
         { class: 'fine' },
         `높음은 우연이라고 보기 어려울 만큼 뚜렷하다는 뜻이에요. 최근 ${PROFILE_WINDOW}판까지만 반영해서 습관을 고치면 성향도 바뀌어요.`,
       ),
-      anyTrend
-        ? h(
-            'p',
-            { class: 'fine' },
-            '변화는 판별 점수 평균이에요. 차이가 흔들림보다 클 때만 줄었다·늘었다고 해요. 처음에 유난히 높았던 점수는 아무것도 안 바꿔도 조금 내려가기 쉬워요.',
-          )
-        : null,
+      h(
+        'p',
+        { class: 'fine' },
+        anyTrend
+          ? `변화는 ${TREND_SKIP + 1}~${TREND_SKIP + TREND_WINDOW}판과 최근 ${TREND_WINDOW}판의 점수 평균을 견줘요. 우연으로 보기 어려울 만큼 차이가 클 때만 줄었다·늘었다고 하고, ${TREND_STEP}판마다 한 번씩 다시 봐요. 처음 ${TREND_SKIP}판은 유형을 정할 때 쓴 판이라 빼요.`
+          : `변화는 아직 판단하기 일러요. 습관을 잴 수 있었던 판이 ${TREND_MIN_ROUNDS}판쯤 쌓이면 보여 줘요.`,
+      ),
       h(
         'div',
         { class: 'result-actions' },

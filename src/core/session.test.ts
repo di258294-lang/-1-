@@ -47,9 +47,15 @@ describe('completeRound coaching', () => {
     const third = completeRound(practice, m3, shortTaps(m3))
     expect(third.mission?.outcome).toBe('fail')
 
+    // 3 passes in the last 4 judged rounds complete it.
     const m4 = generateMarket(4)
     const fourth = completeRound(practice, m4, longHold(m4))
-    expect(fourth.mission).toMatchObject({ outcome: 'pass', completed: true })
+    expect(fourth.mission).toMatchObject({ outcome: 'pass' })
+    expect(fourth.mission?.completed).toBeUndefined()
+
+    const m5 = generateMarket(7)
+    const fifth = completeRound(practice, m5, longHold(m5))
+    expect(fifth.mission).toMatchObject({ outcome: 'pass', completed: true })
     expect(save.coach().done.map((d) => d.id)).toEqual(['longHold'])
     expect(save.coach().active?.id).not.toBe('longHold')
   })

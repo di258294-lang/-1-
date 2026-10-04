@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { tradesFrom } from './habits'
+import { tickVolatility, tradesFrom } from './habits'
 import { pathReturn } from './luck'
 import { generateMarket } from './market'
-import { advanceTo, createRound, EVEN_EDGE, gradeFor, setHolding, summarize, type Round } from './round'
+import { formatPct } from './format'
+import { advanceTo, createRound, EVEN_EDGE, gradeEdges, gradeFor, roundScale, setHolding, summarize, type Round } from './round'
 
 const runsOf = (held: boolean[]) => held.filter((on, t) => on && !held[t - 1]).length
 
@@ -129,5 +130,71 @@ describe('grade titles never contradict the numbers', () => {
 
   it('adds a luck caveat to big wins', () => {
     expect(gradeFor(0.2, 0.01, 0.5).line).toMatch(/운/)
+  })
+
+  it('keeps the sweep honest with the round scale too, and scales "크게" and "비김"', () => {
+    for (const scale of [0.004, 0.012, 0.05, 0.12]) {
+      const { even, big } = gradeEdges(scale)
+      expect(even).toBeGreaterThanOrEqual(0.001)
+      expect(big).toBeCloseTo(Math.max(0.002, scale), 12)
+      for (const r of returns) {
+        for (const b of returns) {
+          const { title } = gradeFor(r, b, 0.5, scale)
+          const edge = r - b
+          const tag = `${title} (you ${r}, market ${b}, scale ${scale})`
+          if (r > 0) expect(title, tag).not.toMatch(LOSSY)
+          if (r < 0) expect(title, tag).not.toMatch(PRAISE)
+          if (edge > even) expect(title, tag).not.toMatch(BEHIND)
+          if (edge < -even) expect(title, tag).not.toMatch(AHEAD)
+          if (title.includes('크게')) expect(edge, tag).toBeGreaterThanOrEqual(big)
+        }
+      }
+    }
+    // A 2% lead is big on a bond chart (scale 0.4%), ordinary on a coin chart (12%).
+    expect(gradeFor(0.03, 0.01, 0.5, 0.004).title).toBe('시장보다 크게 앞섰어요')
+    expect(gradeFor(0.03, 0.01, 0.5, 0.12).title).toBe('시장보다 앞섰어요')
+    // Without a scale the old fixed cut-offs apply.
+    expect(gradeEdges()).toEqual({ even: EVEN_EDGE, big: 0.05 })
+  })
+
+  it('never says "시장만큼 잃었어요" while the market rose', () => {
+    for (const scale of [undefined, 0.004, 0.05]) {
+      for (const [you, mkt] of [[-0.001, 0.003], [-0.0004, 0.0001], [-0.002, 0]] as const) {
+        const g = gradeFor(you, mkt, 0.5, scale)
+        expect(g.title, `${you} ${mkt}`).not.toBe('시장만큼 잃었어요')
+      }
+    }
+    expect(gradeFor(-0.001, 0.003, 0.5).title).toBe('시장만큼 했어요')
+    expect(gradeFor(-0.001, -0.003, 0.5).title).toBe('시장만큼 잃었어요')
+  })
+
+  it('computes the gap from the numbers as shown, one decimal each', () => {
+    // 3.24% and 11.26% show as +3.2% and +11.3%: the gap reads 8.1%, not 8.0%.
+    expect(gradeFor(0.0324, 0.1126, 0.5).line).toContain('8.1%')
+    expect(gradeFor(0.0326, 0.1124, 0.5).line).toContain('7.9%')
+    for (let i = 0; i < 400; i++) {
+      const you = Math.sin(i * 12.9898) * 0.15
+      const mkt = Math.sin(i * 78.233) * 0.15
+      const { line } = gradeFor(you, mkt, 0.5, 0.05)
+      const m = line.match(/(\d+\.\d)% (더|덜)/)
+      if (!m) continue
+      const shown = (x: number) => Number(formatPct(x, 1).replace('%', ''))
+      expect(Number(m[1]), line).toBeCloseTo(Math.abs(shown(you) - shown(mkt)), 9)
+    }
+  })
+
+  it('passes the round scale from summarize', () => {
+    const m = generateMarket(3, 'bond')
+    const s = roundScale(m)
+    expect(s).toBeGreaterThan(0.001)
+    expect(s).toBeLessThan(0.02)
+    expect(roundScale(generateMarket(3, 'coin'))).toBeGreaterThan(s * 5)
+    // Same estimate as the habit measures' tick volatility.
+    for (const product of ['stock', 'bond', 'coin'] as const) {
+      for (const length of ['short', 'long'] as const) {
+        const m = generateMarket(11, product, length)
+        expect(roundScale(m)).toBeCloseTo(tickVolatility(m) * Math.sqrt(m.playTicks), 9)
+      }
+    }
   })
 })

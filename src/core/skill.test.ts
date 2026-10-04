@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { erf, normalCdf, skillCopy, skillRoundsCounted, skillTest, SKILL_MIN_ROUNDS, SKILL_WINDOW } from './skill'
+import { createRng } from './rng'
+import { erf, normalCdf, skillBand, skillCopy, skillRoundsCounted, skillTest, SKILL_MIN_ROUNDS, SKILL_WINDOW, SKILL_Z_SHOW } from './skill'
 
 describe('normal CDF', () => {
   it('matches known values', () => {
@@ -67,16 +68,55 @@ describe('skillTest', () => {
 })
 
 describe('skillCopy', () => {
-  it('says the rank and how unlikely luck is, never "skill"', () => {
-    const c = skillCopy(skillTest([0.7, 0.7, 0.7, 0.7, 0.7])!)
-    expect(c.headline).toBe('최근 5판 평균, 무작위 배치보다 상위 30%')
-    expect(c.line).toBe('운만으로 이런 평균이 나올 확률 약 6%.')
-    expect(`${c.headline}${c.line}`).not.toContain('실력이 있')
+  it('shows the mean rank with its range below z = 2.9, and no chance line', () => {
+    const r = skillTest([0.7, 0.7, 0.7, 0.7, 0.7])! // z = 1.55
+    const c = skillCopy(r)
+    expect(c.showsChance).toBe(false)
+    expect(c.headline).toBe('최근 5판 평균, 아무 때나 누른 판보다 잘한 비율 70%')
+    // ±1.645·√(1/60) = ±0.212
+    expect(c.line).toContain('49~91%')
+    expect(c.line).toContain('구별되지 않아요')
+    expect(c.line).not.toMatch(/확률|경우는 약/)
+    expect(skillBand(10)).toBeCloseTo(0.15, 2)
   })
 
-  it('reads 하위 below the middle and bounds tiny probabilities', () => {
-    expect(skillCopy(skillTest([0.3, 0.3, 0.3, 0.3, 0.3])!).headline).toContain('하위 30%')
-    expect(skillCopy(skillTest(new Array(10).fill(0.8))!).line).toContain('1% 미만')
-    expect(skillCopy(skillTest(new Array(10).fill(0.02))!).line).toContain('99% 이상')
+  it('does not call a mean above the band proof while z < 2.9', () => {
+    const c = skillCopy(skillTest(new Array(10).fill(0.7))!) // z = 2.19
+    expect(c.showsChance).toBe(false)
+    expect(c.line).toContain('아직 단정하지 않아요')
+  })
+
+  it('shows the frequency line only at z >= 2.9, with the repeated-looks caveat', () => {
+    const c = skillCopy(skillTest(new Array(10).fill(0.8))!) // z = 3.29
+    expect(c.showsChance).toBe(true)
+    expect(c.line).toBe('아무렇게나 누른 가상 플레이어가 최근 10판 평균으로 이만큼 이상 낸 경우는 1% 미만이에요. 자주 확인하면 우연히 낮게 나오는 때도 있어요.')
+    expect(SKILL_Z_SHOW).toBe(2.9)
+  })
+
+  it('always carries the caveat and never claims skill', () => {
+    for (const ps of [[0.3, 0.3, 0.3, 0.3, 0.3], new Array(10).fill(0.8), new Array(10).fill(0.02)]) {
+      const c = skillCopy(skillTest(ps)!)
+      expect(c.caveat).toContain('작은 수익에서 바로 파는 방식은 이 비교에서 높게 나오기 쉬워요')
+      expect(`${c.headline}${c.line}${c.caveat}`).not.toMatch(/실력이 있|운만으로 이런|실력일/)
+    }
+    expect(skillCopy(skillTest(new Array(10).fill(0.02))!).line).toContain('더 나았던 경우가 많았어요')
+  })
+
+  it('keeps pure luck under the chance line in at most 5% of players over 50 looks', () => {
+    // Uniform percentiles, looks after every round from 5 to 50, as the card does.
+    const rng = createRng(2026)
+    let ever = 0
+    const P = 2000
+    for (let p = 0; p < P; p++) {
+      const ps: number[] = []
+      let hit = false
+      for (let r = 1; r <= 50 && !hit; r++) {
+        ps.push(rng.next())
+        const s = skillTest(ps)
+        if (s && skillCopy(s).showsChance) hit = true
+      }
+      if (hit) ever++
+    }
+    expect(ever / P).toBeLessThan(0.06)
   })
 })
