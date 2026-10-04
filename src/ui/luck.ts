@@ -1,13 +1,16 @@
 import { formatPct } from '../core/format'
-import { luckTest, luckVerdict, type LuckResult } from '../core/luck'
+import { LUCK_SIMS, luckTest, luckVerdict, type LuckResult } from '../core/luck'
 import type { Market } from '../core/market'
 import { h } from './dom'
 
 const BINS = 28
 
-export function runLuckTest(market: Market, held: boolean[]) {
-  // Long rounds are 7.5x the ticks; fewer replays keep the screen quick.
-  return luckTest(market, held, market.length === 'long' ? 400 : 1000)
+/**
+ * `yourReturn` is the round engine's own number, so taps shorter than a tick
+ * (charged fees that `held` cannot show) are compared honestly.
+ */
+export function runLuckTest(market: Market, held: boolean[], yourReturn?: number) {
+  return luckTest(market, held, LUCK_SIMS, yourReturn)
 }
 
 /** Whether luckTest() will have anything to compare (mirrors its early exit). */
@@ -29,8 +32,9 @@ export function luckPlaceholder() {
 }
 
 /**
- * Skill or luck: where this round sits among random traders with the same
- * style on the same chart, drawn as a histogram with the player marked.
+ * Skill or luck: where this round sits among random placements of the
+ * player's own holding stretches on the same chart, drawn as a histogram
+ * with the player marked.
  * `bridge` is an extra sentence shown under the verdict.
  */
 export function luckCard(result: LuckResult, bridge?: string | null) {
@@ -61,7 +65,7 @@ export function luckCard(result: LuckResult, bridge?: string | null) {
       {
         class: 'hist',
         role: 'img',
-        'aria-label': `같은 차트에서 무작위로 누른 ${result.sims}판의 수익률 분포. 내 수익률 ${formatPct(result.playerReturn, 1)}`,
+        'aria-label': `같은 차트에서 들고 있던 구간을 무작위로 옮겨 본 ${result.sims}번의 수익률 분포. 내 수익률 ${formatPct(result.playerReturn, 1)}`,
       },
       bars,
       h('span', { class: 'hist-marker', style: `left:${Math.min(100, Math.max(0, markerLeft))}%` }),
@@ -75,10 +79,6 @@ export function luckCard(result: LuckResult, bridge?: string | null) {
     ),
     h('p', { class: 'habit-line' }, verdict.line),
     bridge ? h('p', { class: 'habit-line luck-bridge' }, bridge) : null,
-    h(
-      'p',
-      { class: 'luck-note' },
-      `같은 차트에서 나와 비슷한 횟수와 시간만큼 무작위로 누른 가상 플레이어 ${result.sims.toLocaleString('ko-KR')}명과 비교했어요.`,
-    ),
+    h('p', { class: 'luck-note' }, verdict.note),
   )
 }

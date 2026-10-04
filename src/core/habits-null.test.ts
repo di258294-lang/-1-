@@ -88,8 +88,12 @@ const chaser: Style = (m) => {
 }
 
 /**
- * Stays in the market, cuts a loser at -1.5 sigma over 2 s, steps aside before
- * bad filings and buys good ones, and ignores rumors.
+ * Stays in the market, cuts a loser at -1.5 sigma over 2 s and is back in
+ * 0.5 s later, steps aside before bad filings and buys good ones, and ignores
+ * rumors. A long cool-down after each stop would make the returns skewed
+ * (many small cuts, one long ride): under the luck test's run-placement null
+ * that ranks below the median even with no loss on average, and such a
+ * trader is rightly left as 관망형 until their timing shows.
  */
 const disciplined: Style = (m) => {
   const n = m.playTicks
@@ -109,7 +113,7 @@ const disciplined: Style = (m) => {
     if (holding) {
       if (outUntil[t] > t || p < entry * (1 - stop)) {
         holding = false
-        rest = t + 20
+        rest = t + 5
       }
     } else if (outUntil[t] <= t && (t >= rest || goodAt.has(t))) {
       holding = true

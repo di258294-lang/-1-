@@ -128,7 +128,7 @@ export function resultScreen(
   const runLuck = () => {
     if (luckCancelled || !luckSlot) return
     try {
-      const luck = runLuckTest(market, result.held)
+      const luck = runLuckTest(market, result.held, result.yourReturn)
       if (!luck) {
         luckSlot.remove()
         return
