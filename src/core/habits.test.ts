@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeRound, profileFrom, roundInsight, tradesFrom, type HabitRecord, type HabitScores } from './habits'
+import {
+  analyzeRound,
+  habitBand,
+  habitTrend,
+  profileFrom,
+  roundInsight,
+  tradesFrom,
+  TYPE_MIN,
+  type HabitRecord,
+  type HabitScores,
+} from './habits'
 import { COMPANIES, type Market, type NewsEvent } from './market'
 
 const PLAY_TICKS = 400
@@ -148,7 +158,7 @@ describe('analyzeRound', () => {
     expect(h.facts.filingReactions).toBe(1)
     const insight = roundInsight(h)
     expect(insight.habit).toBe('rumor')
-    expect(insight.line).toBe('지라시 3개 중 3개에 가격이 움직이기 전에 반응했어요. 그중 2개는 틀린 소문이었어요.')
+    expect(insight.line).toBe('소문 3개 중 3개에 가격이 움직이기 전에 반응했어요. 그중 2개는 틀린 소문이었어요.')
   })
 
   it('does not call one rumor reaction a habit', () => {
@@ -232,5 +242,41 @@ describe('profileFrom', () => {
 
   it('does not count records migrated without participation as barely playing', () => {
     expect(profileFrom(times(5, { heldRatio: 0, trades: 1, at: '' }))?.type).toBe('machine')
+  })
+})
+
+describe('habit bands and trends (display only)', () => {
+  const rec = (holder: number, i: number, measurable = true): HabitRecord => ({
+    id: `p:${i}`,
+    at: '2026-10-01',
+    product: 'stock',
+    length: 'short',
+    trades: 3,
+    heldRatio: 0.5,
+    scores: { holder, chicken: 0, scalper: 0.1, chaser: 0, rumor: 0 },
+    measurable: { holder: measurable, chicken: true, scalper: true, chaser: true, rumor: false },
+    counts: { sellUp: 0, expUp: 0, sellDown: 0, expDown: 0 },
+    luckPct: null,
+  })
+
+  it('bands at the type threshold', () => {
+    expect(habitBand(0)).toBe('low')
+    expect(habitBand(0.15)).toBe('mid')
+    expect(habitBand(TYPE_MIN)).toBe('high')
+  })
+
+  it('reports a fall only when it is bigger than the noise', () => {
+    const falling = [0.7, 0.6, 0.65, 0.62, 0.68, 0.5, 0.4, 0.2, 0.25, 0.3, 0.28, 0.33].map((x, i) => rec(x, i))
+    expect(habitTrend(falling, 'holder')).toMatchObject({ change: 'down', rounds: 12 })
+    const noisy = [0.9, 0, 0.8, 0.1, 0.7, 0.2, 0.9, 0, 0.6, 0.5].map((x, i) => rec(x, i))
+    expect(habitTrend(noisy, 'holder')?.change).toBe('same')
+  })
+
+  it('needs two full windows of rounds where the habit was measurable', () => {
+    const few = [0.5, 0.5, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1, 0.1].map((x, i) => rec(x, i))
+    expect(habitTrend(few, 'holder')).toBeNull()
+    const gaps = [...few, rec(0.1, 9, false)]
+    expect(habitTrend(gaps, 'holder')).toBeNull()
+    expect(habitTrend([...few, rec(0.1, 10)], 'holder')?.change).toBe('down')
   })
 })

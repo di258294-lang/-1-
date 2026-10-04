@@ -11,6 +11,7 @@ import {
   type SeasonSummary,
 } from './records'
 import { accountAfter, accountBefore } from './season'
+import { emptyMissionState, isMissionId, type ActiveMission, type MissionState } from './missions'
 import { freezesToApply, playedDays, streakDays, streakState, type StreakState } from './streak'
 import { DEFAULT_SETTINGS, type Settings } from './types'
 
@@ -82,6 +83,16 @@ type SaveFile = {
   frozen: string[]
   /** Finished months by 'yyyy-mm', frozen once by closeSeasons. */
   seasons: Record<string, ArchivedSeason>
+  // --- coaching (optional in older files; normalize fills defaults) ---
+  coach: CoachSave
+  /** Closed seasons whose recap card was opened or dismissed ('yyyy-mm'). */
+  seenSeasons: string[]
+}
+
+/** Missions and micro-lessons (see missions.ts, lessons.ts). */
+export type CoachSave = MissionState & {
+  /** Lesson ids already shown in the result screen's lesson slot. */
+  lessons: string[]
 }
 
 export type { ArchivedSeason, DailyHistoryItem, SeasonSummary, StreakState }
@@ -97,6 +108,8 @@ function emptySave(): SaveFile {
     settings: { ...DEFAULT_SETTINGS },
     frozen: [],
     seasons: {},
+    coach: { ...emptyMissionState(), lessons: [] },
+    seenSeasons: [],
   }
 }
 
@@ -196,6 +209,44 @@ function normHabit(x: unknown, issues: string[], path: string): HabitRecord | nu
   }
 }
 
+// --- coaching ---------------------------------------------------------------
+
+const MAX_LESSONS = 100
+const MAX_DONE = 50
+
+function normCoach(x: unknown, issues: string[]): CoachSave {
+  const out: CoachSave = { ...emptyMissionState(), lessons: [] }
+  if (x === undefined) return out
+  if (!isObj(x)) {
+    issues.push('coach')
+    return out
+  }
+  const a = x.active
+  if (isObj(a) && isMissionId(a.id)) {
+    const attempts = Array.isArray(a.attempts) ? a.attempts.filter((v): v is 'pass' | 'fail' => v === 'pass' || v === 'fail') : []
+    const active: ActiveMission = { id: a.id, since: isDateKey(a.since) ? a.since : '', attempts: attempts.slice(-12) }
+    if (a.recheck === true) active.recheck = true
+    if (a.starter === true) active.starter = true
+    out.active = active
+  } else if (a !== undefined && a !== null) {
+    issues.push('coach.active')
+  }
+  if (Array.isArray(x.done)) {
+    out.done = x.done
+      .filter((d): d is { id: MissionState['done'][number]['id']; at: string } => isObj(d) && isMissionId(d.id) && isDateKey(d.at))
+      .map((d) => ({ id: d.id, at: d.at }))
+      .slice(-MAX_DONE)
+  } else if (x.done !== undefined) {
+    issues.push('coach.done')
+  }
+  if (Array.isArray(x.lessons)) {
+    out.lessons = [...new Set(x.lessons.filter((v): v is string => isStr(v) && v.length <= 40))].slice(-MAX_LESSONS)
+  } else if (x.lessons !== undefined) {
+    issues.push('coach.lessons')
+  }
+  return out
+}
+
 function normSeason(x: unknown): ArchivedSeason | null {
   if (!isObj(x)) return null
   if (!isNum(x.final) || !isNum(x.market) || !isNum(x.cash)) return null
@@ -275,6 +326,14 @@ export function normalize(data: Json, issues: string[] = []): SaveFile {
   }
 
   f.seasons = normRecord(data.seasons, isSeasonKey, normSeason, issues, 'seasons')
+
+  // --- coaching ---
+  f.coach = normCoach(data.coach, issues)
+  if (Array.isArray(data.seenSeasons)) {
+    f.seenSeasons = [...new Set(data.seenSeasons.filter(isSeasonKey))].sort().slice(-36)
+  } else if (data.seenSeasons !== undefined) {
+    issues.push('seenSeasons')
+  }
   return f
 }
 
@@ -652,6 +711,40 @@ export function createStore(backend: StorageBackend) {
         return changed
       })
       return store.getSettings()
+    },
+    // --- coaching -------------------------------------------------------------
+    /** Mission state and seen lessons (a copy). */
+    coach(): CoachSave {
+      const c = file().coach
+      return { active: c.active && { ...c.active, attempts: [...c.active.attempts] }, done: [...c.done], lessons: [...c.lessons] }
+    },
+    /**
+     * Read-modify-write of the coaching state, so a round's mission verdict
+     * is applied to the freshest file. `change` returns the new state, or
+     * null to leave it alone. Returns what was stored.
+     */
+    updateCoach(change: (c: CoachSave) => CoachSave | null): CoachSave {
+      mutate((f) => {
+        const next = change(store.coach())
+        if (!next) return false
+        f.coach = normCoach(next, [])
+        return true
+      })
+      return store.coach()
+    },
+    markLessonSeen(id: string) {
+      store.updateCoach((c) => (c.lessons.includes(id) ? null : { ...c, lessons: [...c.lessons, id] }))
+    },
+    seenSeasons(): string[] {
+      return [...file().seenSeasons]
+    },
+    markSeasonsSeen(seasons: string[]) {
+      mutate((f) => {
+        const all = [...new Set([...f.seenSeasons, ...seasons.filter(isSeasonKey)])].sort().slice(-36)
+        if (all.length === f.seenSeasons.length && all.every((s, i) => s === f.seenSeasons[i])) return false
+        f.seenSeasons = all
+        return true
+      })
     },
     /** True after the latest write failed (storage full or blocked); cleared by the next success. */
     lastWriteFailed() {

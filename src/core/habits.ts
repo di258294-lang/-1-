@@ -18,37 +18,37 @@ export const HABIT_KEYS: readonly HabitKey[] = ['holder', 'chicken', 'scalper', 
 
 export const HABIT_LABELS: Record<HabitKey, string> = {
   holder: '손실 버티기',
-  chicken: '빠른 익절',
+  chicken: '너무 일찍 팔기',
   scalper: '잦은 매매',
-  chaser: '추격 매수',
-  rumor: '지라시 반응',
+  chaser: '오른 뒤 따라 사기',
+  rumor: '소문 반응',
 }
 
 export const TYPES: Record<TypeKey, { name: string; line: string; tip: string }> = {
   holder: {
     name: '존버형',
     line: '떨어져도 놓지 않아요. 언젠가 오를 거라 믿죠. 손실은 오래, 수익은 짧게 가져가는 습관으로, 개인 투자자 연구에서 자주 관찰돼요.',
-    tip: '이번 판에서 손실이 -3%에 닿으면 손을 떼 보기',
+    tip: '손실이 깊어지기 전에 손을 떼 보기',
   },
   chicken: {
-    name: '새가슴 익절형',
-    line: '조금만 올라도 팔아요. 수익을 확정하는 기분은 좋지만, 큰 상승은 대부분 놓쳐요.',
+    name: '새가슴형',
+    line: '조금만 올라도 팔아요. 수익을 챙기는 기분은 좋지만, 큰 상승은 대부분 놓쳐요.',
     tip: '수익 중일 때 1초만 더 누르고 있어 보기',
   },
   scalper: {
-    name: '단타 중독형',
+    name: '자주 사고파는 형',
     line: '가만히 있질 못해요. 매매할 때마다 수수료가 빠지니, 가장 큰 적은 시장이 아니라 내 손가락이에요.',
     tip: '매매 5번 이하로 한 판 끝내 보기',
   },
   chaser: {
-    name: '추격 매수형',
+    name: '따라 사는 형',
     line: '오르는 걸 보고 올라타요. 확신이 생겼을 땐 이미 많이 오른 뒤라, 꼭대기 근처에서 사는 일이 잦아요.',
     tip: '2초 사이 크게 오른 직후엔 한 박자 쉬어 보기',
   },
   rumor: {
-    name: '지라시 추종형',
-    line: '소문에 제일 먼저 움직여요. 빠르긴 한데, 지라시는 반이 틀려서 결국 동전 던지기를 하는 셈이에요.',
-    tip: '지라시가 뜨면 가격이 실제로 움직이는지 보고 누르기',
+    name: '소문 따라가는 형',
+    line: '소문에 제일 먼저 움직여요. 빠르긴 한데, 이 게임의 소문은 반쯤 틀려서 결국 동전 던지기를 하는 셈이에요.',
+    tip: '소문이 뜨면 가격이 실제로 움직이는지 보고 누르기',
   },
   machine: {
     name: '냉정한 기계형',
@@ -58,7 +58,7 @@ export const TYPES: Record<TypeKey, { name: string; line: string; tip: string }>
   watcher: {
     name: '관망형',
     line: '대부분 지켜보고, 확신을 갖고 들어가는 일은 드물어요. 그래서 습관도 실력도 아직 잘 드러나지 않았어요.',
-    tip: '공시가 뜨면 누르고, 가격이 움직일 때까지 들고 있어 보기',
+    tip: '공식 발표가 뜨면 누르고, 가격이 움직일 때까지 들고 있어 보기',
   },
 }
 
@@ -93,8 +93,8 @@ const MIN_POOLED_EXITS = 5
 const RW_DRAWDOWN = Math.sqrt(2 / Math.PI)
 /** Losers held at least this long (1 s) count toward depth; a tap is not riding a loss. */
 const MIN_DEPTH_TICKS = TICKS_PER_SECOND
-/** A profile habit at or above this names the type. */
-const TYPE_MIN = 0.3
+/** A profile habit at or above this names the type (the pooled 5% level). */
+export const TYPE_MIN = 0.3
 
 export type Trade = {
   entry: number
@@ -489,7 +489,7 @@ export function roundInsight(h: RoundHabits): Insight {
             tone: 'warn',
             habit: top,
             title: '수익은 빨리 팔고, 손실은 버텼어요',
-            line: `수익 중에 ${f.sellsUp}번, 손실 중에 ${f.sellsDown}번 팔았어요. 들고 있던 시간을 감안하면, 수익 중일 때 1초 안에 팔 확률이 손실 중일 때의 ${times(ratio)}였어요. 처분 효과라고 불러요.`,
+            line: `수익 중에 ${f.sellsUp}번, 손실 중에 ${f.sellsDown}번 팔았어요. 들고 있던 시간을 감안하면, 수익 중일 때 1초 안에 팔 확률이 손실 중일 때의 ${times(ratio)}였어요. 오르면 빨리 팔고 내리면 버티는 습관이에요.`,
           }
         }
         return {
@@ -503,8 +503,8 @@ export function roundInsight(h: RoundHabits): Insight {
         return {
           tone: 'warn',
           habit: top,
-          title: '수익을 너무 빨리 확정했어요',
-          line: `수익 내고 판 ${f.cleanWinExits}번, 그 뒤 3초 동안 가격이 평균 ${pct(f.missedAfterWin)} 더 올랐어요.`,
+          title: '수익 중에 너무 일찍 팔았어요',
+          line: `수익 중에 ${f.cleanWinExits}번 팔았는데, 팔고 나서 3초 동안 가격이 평균 ${pct(f.missedAfterWin)} 더 올랐어요.`,
         }
       case 'scalper':
         return {
@@ -524,9 +524,9 @@ export function roundInsight(h: RoundHabits): Insight {
         return {
           tone: 'warn',
           habit: top,
-          title: '지라시에 바로 움직였어요',
+          title: '소문에 바로 움직였어요',
           line:
-            `지라시 ${f.rumors}개 중 ${f.rumorReactions}개에 가격이 움직이기 전에 반응했어요.` +
+            `소문 ${f.rumors}개 중 ${f.rumorReactions}개에 가격이 움직이기 전에 반응했어요.` +
             (f.wrongRumorReactions ? ` 그중 ${f.wrongRumorReactions}개는 틀린 소문이었어요.` : ''),
         }
     }
@@ -534,15 +534,15 @@ export function roundInsight(h: RoundHabits): Insight {
   if (f.filingReactions > 0) {
     return {
       tone: 'good',
-      title: '공시에 빠르게 반응했어요',
-      line: `공시 ${f.filings}개 중 ${f.filingReactions}개에 가격보다 먼저 맞게 움직였어요.`,
+      title: '공식 발표에 빠르게 반응했어요',
+      line: `공식 발표 ${f.filings}개 중 ${f.filingReactions}개에 가격보다 먼저 맞게 움직였어요.`,
     }
   }
   // Shallower than a random hold of the same length would usually go.
   if (f.lossTrades >= 2 && f.lossDepthRatio > 0 && f.lossDepthRatio < 1) {
     return {
       tone: 'good',
-      title: '손절이 빨랐어요',
+      title: '손실을 빨리 정리했어요',
       line: `손실 난 매매를 평균 -${pct(f.avgLossWorst)} 안에서 정리했어요.`,
     }
   }
@@ -691,4 +691,58 @@ export function profileFrom(records: HabitRecord[]): Profile | null {
     type = active && skilled ? 'machine' : 'watcher'
   }
   return { type, scores, rounds: recent.length }
+}
+
+// ---------------------------------------------------------------------------
+// Bands and trends for the habits screen (coaching). Display helpers only:
+// they read stored scores and never change how a habit is measured.
+
+export type Band = 'low' | 'mid' | 'high'
+export const BAND_LABELS: Record<Band, string> = { low: '낮음', mid: '보통', high: '높음' }
+
+/**
+ * A profile score as a band instead of a falsely precise number. "높음"
+ * starts at TYPE_MIN, where the pooled evidence reaches the one-sided 5%
+ * level; "보통" is a hint that has not got there yet.
+ */
+export function habitBand(score: number): Band {
+  if (score >= TYPE_MIN) return 'high'
+  if (score >= 0.12) return 'mid'
+  return 'low'
+}
+
+/** Rounds in each window of a trend. */
+export const TREND_WINDOW = 5
+
+export type HabitTrend = {
+  /** Mean round score in the first and the latest window, 0..1. */
+  from: number
+  to: number
+  /** 'same' unless the change is larger than twice its standard error. */
+  change: 'down' | 'up' | 'same'
+  /** Rounds where the habit could be measured. */
+  rounds: number
+}
+
+/**
+ * First window against the latest window of rounds where the habit could be
+ * measured. A change counts only when |to - from| >= 2·√(var₁/n + var₂/n)
+ * (learning-design report §3) and is at least 5 points, so noise reads as
+ * "비슷해요". Null until there are two full windows.
+ */
+export function habitTrend(records: readonly HabitRecord[], key: HabitKey, n = TREND_WINDOW): HabitTrend | null {
+  const rs = records.filter((r) => r.measurable[key])
+  if (rs.length < 2 * n) return null
+  const a = rs.slice(0, n).map((r) => r.scores[key])
+  const b = rs.slice(-n).map((r) => r.scores[key])
+  const variance = (xs: number[]) => {
+    const mu = mean(xs)
+    return xs.reduce((s, x) => s + (x - mu) ** 2, 0) / (xs.length - 1)
+  }
+  const from = mean(a)
+  const to = mean(b)
+  const se = Math.sqrt(variance(a) / n + variance(b) / n)
+  const diff = to - from
+  const change = Math.abs(diff) >= Math.max(0.05, 2 * se) ? (diff < 0 ? 'down' : 'up') : 'same'
+  return { from, to, change, rounds: rs.length }
 }

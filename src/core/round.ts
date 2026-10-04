@@ -1,3 +1,4 @@
+import { formatPct } from './format'
 import { playPrice, TICKS_PER_SECOND, TRADING_DAYS_PER_YEAR, type Market } from './market'
 
 export const START_EQUITY = 10_000_000
@@ -140,20 +141,35 @@ export function perfectReturn(market: Market) {
   return r - 1
 }
 
+/** Edges smaller than this (half a percent of the account) read as "the same as the market". */
+export const EVEN_EDGE = 0.005
+
+/**
+ * The headline for a round: task-level ("시장보다 앞섰어요"), never a label
+ * for the person, and never contradicting the numbers under it. A gain is
+ * never called a loss or "거꾸로", a loss is never praised, and "ahead" or
+ * "behind" always matches the gap to simply holding. Big wins carry a luck
+ * caveat (learning-design report §6). Tested by sweeping in round.test.ts.
+ */
 export function gradeFor(yourReturn: number, buyHold: number, heldRatio: number): Grade {
-  const edge = (yourReturn - buyHold) * 100
-  const gap = `${Math.abs(edge).toFixed(1)}%p`
+  const edge = yourReturn - buyHold
+  const gap = `${Math.abs(edge * 100).toFixed(1)}%`
+  const market = formatPct(buyHold, 1)
   if (heldRatio === 0) {
     return buyHold < 0
-      ? { title: '현금이 정답이었어요', line: '아무것도 안 한 게 최고의 수였어요.' }
-      : { title: '구경만 했어요', line: '오르는 동안 손을 떼고 있었어요.' }
+      ? { title: '현금으로 비켜 있었어요', line: `가격이 ${market} 움직이는 동안 손을 떼고 이자만 받았어요.` }
+      : { title: '지켜보기만 했어요', line: `가격이 ${market} 움직이는 동안 손을 떼고 이자만 받았어요.` }
   }
-  if (edge >= 15) return { title: '타이밍 장인', line: `그냥 들고 있는 것보다 ${gap} 앞섰어요.` }
-  if (edge >= 5) return { title: '감이 좋아요', line: `그냥 들고 있는 것보다 ${gap} 잘했어요.` }
-  if (edge >= 0.5) return { title: '시장보다 조금 나았어요', line: `그냥 들고 있는 것보다 ${gap} 나았어요.` }
-  if (edge > -0.5) return { title: '시장만큼 했어요', line: '그냥 들고 있는 것과 거의 같아요.' }
-  if (edge > -10) return { title: '한 박자 늦었어요', line: `그냥 들고 있었으면 ${gap} 더 나았어요.` }
-  return { title: '거꾸로 탔어요', line: `그냥 들고 있었으면 ${gap} 더 나았어요.` }
+  if (yourReturn >= 0) {
+    if (edge >= 0.05) return { title: '시장보다 크게 앞섰어요', line: `그냥 들고 있는 것보다 ${gap} 더 벌었어요. 운도 큰 몫을 했을 수 있어요.` }
+    if (edge >= EVEN_EDGE) return { title: '시장보다 앞섰어요', line: `그냥 들고 있는 것보다 ${gap} 더 벌었어요.` }
+    if (edge > -EVEN_EDGE) return { title: '시장만큼 했어요', line: '그냥 들고 있는 것과 거의 같아요.' }
+    return { title: '올랐는데 덜 탔어요', line: `그냥 들고 있었으면 ${gap} 더 벌었어요.` }
+  }
+  if (edge >= EVEN_EDGE) return { title: '시장보다 덜 잃었어요', line: `그냥 들고 있었으면 ${gap} 더 잃었어요.` }
+  if (edge > -EVEN_EDGE) return { title: '시장만큼 잃었어요', line: '그냥 들고 있는 것과 거의 같아요.' }
+  if (buyHold >= 0) return { title: '거꾸로 탔어요', line: `시장은 ${market}였는데 손실이 났어요. 그냥 들고 있었으면 ${gap} 더 나았어요.` }
+  return { title: '시장보다 더 잃었어요', line: `그냥 들고 있었으면 ${gap} 덜 잃었어요.` }
 }
 
 export function summarize(round: Round): RoundResult {
