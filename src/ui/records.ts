@@ -55,15 +55,13 @@ function withIntro(start: () => void) {
  * A past daily chart, replayed as an ordinary practice round: same seed and
  * product, so the same chart, but it never touches the daily record, the
  * season account or the streak. Today and later are never offered.
- *
- * INTEGRATION: session.ts still counts it as a practice round (unlocks,
- * habit and luck history). A `replayOf?: string` on the practice Mode would
- * let it skip habit/luck history, since a replayed chart's future is known.
+ * `replayOf` tells session.ts to leave no habit, luck, unlock or mission
+ * trace, since a replayed chart's future is known.
  */
 export function startReplay(go: Navigate, key: string, today = dateKey()) {
   if (!canReplay(key, today)) return
   const market = generateMarket(dailySeed(key), productOf(key), 'short')
-  go({ name: 'play', mode: { kind: 'practice' }, market })
+  go({ name: 'play', mode: { kind: 'practice', replayOf: key }, market })
 }
 
 function showReplaySheet(go: Navigate, key: string, played: DailyHistoryItem | undefined) {

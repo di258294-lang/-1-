@@ -1,7 +1,11 @@
 /** Shared types that both core logic and screens depend on. */
 
-/** How a round is being played. Long vs short lives on the Market itself. */
-export type Mode = { kind: 'daily'; key: string; day: number } | { kind: 'practice' }
+/**
+ * How a round is being played. Long vs short lives on the Market itself.
+ * `replayOf` (a past daily's date key) marks a replay of a known chart: it is
+ * played like practice but leaves no habit, luck, unlock or mission trace.
+ */
+export type Mode = { kind: 'daily'; key: string; day: number } | { kind: 'practice'; replayOf?: string }
 
 /** Player preferences, kept in the save file (storage.getSettings / updateSettings). */
 export type Settings = {

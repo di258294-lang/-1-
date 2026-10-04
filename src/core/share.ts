@@ -3,6 +3,7 @@ import type { RoundResult } from './round'
 import { formatPct } from './format'
 import { PRODUCTS } from './products'
 import { HABIT_KEYS, HABIT_LABELS, TYPES, type Profile } from './habits'
+import type { LuckResult } from './luck'
 
 const SLICES = 10
 
@@ -34,17 +35,31 @@ export function shareText(opts: {
   result: Pick<RoundResult, 'yourReturn' | 'buyHoldReturn' | 'held'>
   day: number | null
   url: string
+  /**
+   * The luck test, when it ran: the share then says where the round sits
+   * among random placements, so a raw return never travels without it.
+   */
+  luck?: Pick<LuckResult, 'percentile' | 'sims'> | null
 }) {
-  const { market, result, day, url } = opts
+  const { market, result, day, url, luck } = opts
   const name = PRODUCTS[market.product].name
   const mode = market.length === 'long' ? '장기 1년' : '연습'
   const head = day === null ? `HOLD ${mode} · ${name} (가상 게임)` : `HOLD #${day} · ${name} (가상 게임)`
   return [
     `${head}  ${formatPct(result.yourReturn, 1)}`,
     `그냥 들고 있었으면 ${formatPct(result.buyHoldReturn, 1)}`,
+    ...(luck ? [`운 비교 · ${luckRank(luck)}`] : []),
     timelineSquares(market, result.held),
     url,
   ].join('\n')
+}
+
+/** "무작위 배치 1,000번 중 상위 12%", the luck card's own headline. */
+export function luckRank(luck: Pick<LuckResult, 'percentile' | 'sims'>) {
+  const sims = luck.sims.toLocaleString('ko-KR')
+  return luck.percentile >= 0.5
+    ? `무작위 배치 ${sims}번 중 상위 ${Math.max(1, Math.round((1 - luck.percentile) * 100))}%`
+    : `무작위 배치 ${sims}번 중 하위 ${Math.max(1, Math.round(luck.percentile * 100))}%`
 }
 
 /** "■■■□□" for a 0..1 score. */
