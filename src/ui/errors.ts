@@ -15,7 +15,7 @@ function describe(err: unknown) {
   }
 }
 
-export function readErrors(): LoggedError[] {
+function readErrors(): LoggedError[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(KEY) ?? '[]')
     return Array.isArray(parsed) ? parsed : []
@@ -48,18 +48,34 @@ export function installErrorHandlers() {
   window.addEventListener('unhandledrejection', (e) => logError(e.reason, 'unhandledrejection'))
 }
 
-/** Shown when a screen fails to build, so the app is never left blank. */
+/** Times the error screen was shown this session. */
+let errorScreens = 0
+
+/**
+ * Shown when a screen fails to build, so the app is never left blank. From
+ * the second time on (home itself may be what fails), it offers a reload
+ * instead of another trip home.
+ */
 export function errorScreen(go: Navigate): Screen {
+  const again = ++errorScreens > 1
   return {
     el: h(
       'main',
       { class: 'screen' },
       h('h1', { class: 'result-grade' }, '문제가 생겼어요'),
-      h('p', { class: 'result-line' }, '홈으로 돌아가서 다시 해 주세요. 지난 기록은 그대로 있어요.'),
+      h(
+        'p',
+        { class: 'result-line' },
+        again
+          ? '다시 불러와도 계속되면 HOLD를 완전히 닫았다가 다시 열어 주세요. 지난 기록은 그대로 있어요.'
+          : '홈으로 돌아가서 다시 해 주세요. 지난 기록은 그대로 있어요.',
+      ),
       h(
         'div',
         { class: 'home-actions' },
-        h('button', { class: 'btn btn-primary', onclick: () => go({ name: 'home' }) }, '홈으로'),
+        again
+          ? h('button', { class: 'btn btn-primary', onclick: () => location.reload() }, '다시 불러오기')
+          : h('button', { class: 'btn btn-primary', onclick: () => go({ name: 'home' }) }, '홈으로'),
       ),
     ),
   }

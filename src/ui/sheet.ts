@@ -41,6 +41,12 @@ function onKey(e: KeyboardEvent) {
 
 let listening = false
 
+let nextId = 0
+/** A unique element id, so two open sheets never share aria-labelledby targets. */
+export function sheetId(prefix: string) {
+  return `${prefix}-${++nextId}`
+}
+
 /**
  * Shows a sheet and registers it, so navigation, Esc and the platform back
  * button can close it. Returns a function that closes it without onDismiss.
@@ -109,14 +115,16 @@ export function confirmSheet(opts: {
     fn()
   }
   const cancelBtn = h('button', { class: 'btn btn-primary', onclick: done(opts.onCancel) }, opts.cancel)
+  const titleId = sheetId('confirm-title')
+  const bodyId = sheetId('confirm-body')
   const scrim = h(
     'div',
-    { class: 'sheet-scrim', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'confirm-title', 'aria-describedby': 'confirm-body' },
+    { class: 'sheet-scrim', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titleId, 'aria-describedby': bodyId },
     h(
       'div',
       { class: 'sheet' },
-      h('h2', { id: 'confirm-title' }, opts.title),
-      h('p', { class: 'sheet-body', id: 'confirm-body' }, opts.body),
+      h('h2', { id: titleId }, opts.title),
+      h('p', { class: 'sheet-body', id: bodyId }, opts.body),
       h(
         'div',
         { class: 'sheet-actions' },

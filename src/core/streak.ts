@@ -1,4 +1,6 @@
-import { dayNumber, nextKey, previousKey } from './daily'
+import { daysBetween, nextKey, previousKey, weekStart } from './daily'
+
+export { weekStart }
 
 /**
  * Daily streaks and streak freezes ("휴장일"), as pure functions over two sets
@@ -38,11 +40,6 @@ type Entry = { abandoned?: boolean }
 /** Days that count as played: finished, not abandoned. */
 export function playedDays(daily: Record<string, Entry>): Set<string> {
   return new Set(Object.keys(daily).filter((k) => !daily[k].abandoned))
-}
-
-/** Calendar days from a to b (b - a). */
-function daysBetween(a: string, b: string) {
-  return dayNumber(b) - dayNumber(a)
 }
 
 /**
@@ -100,14 +97,6 @@ export function freezesToApply(played: Set<string>, frozen: Set<string>, today: 
   const out: string[] = []
   for (let key = previousKey(today); key > anchor; key = previousKey(key)) out.push(key)
   return out
-}
-
-/** Monday of the KST week containing `key`. */
-export function weekStart(key: string): string {
-  const dow = new Date(`${key}T00:00:00Z`).getUTCDay() // 0 = Sunday
-  let k = key
-  for (let i = 0; i < (dow + 6) % 7; i++) k = previousKey(k)
-  return k
 }
 
 export function weekStrip(played: Set<string>, frozen: Set<string>, today: string): StreakState['week'] {

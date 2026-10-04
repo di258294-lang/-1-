@@ -2,8 +2,9 @@ import { defineConfig, devices } from '@playwright/test'
 
 // End-to-end tests against the production build (vite preview).
 //   npm run test:e2e
-// Set PW_CHROMIUM to a Chromium binary to skip `npx playwright install`.
-const PORT = 4173
+// Set PW_CHROMIUM to a Chromium binary to skip `npx playwright install`,
+// and PW_PORT to serve somewhere other than 4173 (parallel checkouts).
+const PORT = Number(process.env.PW_PORT) || 4173
 
 export default defineConfig({
   testDir: 'tests/e2e',

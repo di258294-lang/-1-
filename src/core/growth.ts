@@ -95,6 +95,9 @@ export type CalendarState =
 
 export function calendarState(key: string, today: string, entry: Day | undefined, frozen: ReadonlySet<string>): CalendarState {
   if (key > today) return 'future'
+  // A 휴장일 covered this day for the streak: that wins over "left midway",
+  // as on the week strip.
+  if (entry?.abandoned && frozen.has(key)) return 'frozen'
   if (entry) return entry.abandoned ? 'abandoned' : beatMarket(entry) ? 'beat' : 'behind'
   if (key === today) return 'today'
   if (key < EPOCH_KEY) return 'before'

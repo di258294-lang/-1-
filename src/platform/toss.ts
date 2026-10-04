@@ -1,12 +1,10 @@
 import {
   Device,
-  getUserKeyForGame,
   graniteEvent,
   SafeArea,
   Screen,
   Share,
   Storage,
-  User,
   type HapticFeedbackType,
 } from '@apps-in-toss/web-framework'
 import { copyWithToast } from './toast'
@@ -18,7 +16,8 @@ import type { HapticKind, Platform } from './types'
  * include the SDK.
  */
 
-const APP_NAME = import.meta.env.VITE_AIT_APP_NAME || 'TODO-appName'
+/** The console appName (.env.toss); apps-in-toss.config.ts refuses to build without a real one. */
+const APP_NAME = import.meta.env.VITE_AIT_APP_NAME ?? ''
 
 const HAPTIC: Record<HapticKind, HapticFeedbackType> = {
   press: 'tickMedium',
@@ -45,11 +44,13 @@ const local = {
       return null
     }
   },
-  set(key: string, value: string) {
+  /** False when localStorage is full or blocked. */
+  set(key: string, value: string): boolean {
     try {
       localStorage.setItem(key, value)
+      return true
     } catch {
-      // Full or blocked. Nothing else to do.
+      return false
     }
   },
 }
@@ -121,28 +122,30 @@ export const platform: Platform = {
       }
       return local.get(key)
     },
+    // Rejects only when neither copy was stored, so the save can flag it.
     async set(key, value) {
-      local.set(key, value)
+      const kept = local.set(key, value)
       try {
         await Storage.setItem(key, value)
-      } catch {
+      } catch (err) {
+        if (!kept) throw err
         // localStorage still has it.
       }
     },
   },
 
-  async userKey() {
+  async openUrl(url) {
     try {
-      return (await User.getAnonymousKey()).hash
+      await Device.openURL(url)
+      return true
     } catch {
-      // UNSUPPORTED_APP_VERSION on older Toss apps: the 2.x game key.
+      return false
     }
-    try {
-      const res = await getUserKeyForGame()
-      return res && typeof res === 'object' ? res.hash : null
-    } catch {
-      return null
-    }
+  },
+
+  onOpenUrl() {
+    // A Toss deep link restarts the mini-app with its query.
+    return () => {}
   },
 
   onBack(handler) {

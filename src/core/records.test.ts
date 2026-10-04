@@ -60,8 +60,9 @@ describe('season summary', () => {
     expect(s.account).toBeCloseTo(SEASON_START * 1.1 * 0.98 * 1.03)
     expect(s.accountReturn).toBeCloseTo(1.1 * 0.98 * 1.03 - 1)
     expect(s.market).toBeCloseTo(1.05 * 1.01 * 0.96 - 1)
-    expect(s.days).toBe(3)
-    expect(s.beatDays).toBe(2)
+    // The abandoned day moves the account and the ghosts, but is not a day played.
+    expect(s.days).toBe(2)
+    expect(s.beatDays).toBe(1)
     expect(s.cash).toBeCloseTo((1 + CASH_RATE_ANNUAL) ** ((3 * DAILY_ROUND_TRADING_DAYS) / 252) - 1)
     // Mid-season: only days so far.
     expect(seasonSummary(daily, '2026-10-01').days).toBe(1)
@@ -78,6 +79,9 @@ describe('season archive', () => {
     expect(archiveSeason(fill('2026-10-01', 10, () => entry(0.01, 0)), '2026-10').medal).toBe(true)
     expect(archiveSeason(fill('2026-10-01', 9, () => entry(0.01, 0)), '2026-10').medal).toBe(false)
     expect(archiveSeason(fill('2026-10-01', 12, () => entry(0.01, 0.02)), '2026-10').medal).toBe(false)
+    // Abandoned days don't count toward the 10-day minimum.
+    const nine = { ...fill('2026-10-01', 9, () => entry(0.01, 0)), '2026-10-20': entry(0.01, 0, { abandoned: true }) }
+    expect(archiveSeason(nine, '2026-10').medal).toBe(false)
   })
 
   it('closes past months once and never recomputes them', () => {

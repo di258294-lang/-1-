@@ -10,6 +10,7 @@ export type HapticKind = 'press' | 'release' | 'tick'
 
 export interface PlatformStorage {
   get(key: string): Promise<string | null>
+  /** Rejects when the value could not be stored anywhere. */
   set(key: string, value: string): Promise<void>
 }
 
@@ -32,15 +33,23 @@ export interface Platform {
    */
   shareUrl(query?: string): Promise<string>
   storage: PlatformStorage
-  /** A stable anonymous user id where the shell provides one, else null. */
-  userKey(): Promise<string | null>
+  /**
+   * Open an outside page (absolute URL) in the system browser, never in the
+   * game's own WebView. Resolves false when nothing could open it.
+   */
+  openUrl(url: string): Promise<boolean>
+  /**
+   * A link that opens the app while it is already running (Capacitor
+   * appUrlOpen). The handler gets the full URL. Returns an unsubscribe function.
+   */
+  onOpenUrl(handler: (url: string) => void): () => void
   /**
    * Take over the system back action (Android back button, Toss back event).
    * While a handler is registered the default back behavior is blocked, so
    * the handler must navigate back or exit. Returns an unsubscribe function.
    */
   onBack(handler: () => void): () => void
-  /** Leave the game (close the mini-app / app). No-op on the web. */
+  /** Leave the game (close the mini-app / app; on the web, go back past the game). */
   exit(): Promise<void>
   /** iOS edge swipe back. Turn off during a round so a swipe cannot quit it. */
   setSwipeBack(on: boolean): void
