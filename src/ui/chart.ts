@@ -1,4 +1,4 @@
-import { HISTORY_TICKS, type Market } from '../core/market'
+import type { Market } from '../core/market'
 import { formatPrice } from '../core/format'
 import { cssVar } from './dom'
 
@@ -144,7 +144,7 @@ export class Chart {
     }
 
     // Round start marker.
-    const startX = x(HISTORY_TICKS)
+    const startX = x(this.market.historyTicks)
     if (startX > left && startX < this.w - right) {
       ctx.save()
       ctx.setLineDash([2, 4])
@@ -161,13 +161,14 @@ export class Chart {
     type Seg = { a: number; b: number; entry: number }
     const segs: Seg[] = []
     const held = frame.held
-    const playHead = head - HISTORY_TICKS
+    const H = this.market.historyTicks
+    const playHead = head - H
     let open: Seg | null = null
     const lastWhole = Math.floor(playHead)
     for (let t = 0; t <= lastWhole; t++) {
       const isHeld = t < lastWhole ? !!held[t] : frame.holdingNow || !!held[t]
       if (isHeld && !open) {
-        open = { a: t, b: t, entry: prices[HISTORY_TICKS + t] }
+        open = { a: t, b: t, entry: prices[H + t] }
       }
       if (open) {
         if (isHeld) open.b = Math.min(t + 1, playHead)
@@ -180,8 +181,8 @@ export class Chart {
     if (open) segs.push(open)
 
     for (const s of segs) {
-      const a = HISTORY_TICKS + s.a
-      const b = HISTORY_TICKS + s.b
+      const a = H + s.a
+      const b = H + s.b
       if (b <= a) continue
       const end = this.priceAt(b)
       ctx.fillStyle = end >= s.entry ? c.upSoft : c.downSoft
@@ -209,8 +210,8 @@ export class Chart {
     // Colored overlay on held segments, split at the entry price.
     ctx.lineWidth = 2.5
     for (const s of segs) {
-      const a = HISTORY_TICKS + s.a
-      const b = HISTORY_TICKS + s.b
+      const a = H + s.a
+      const b = H + s.b
       let prevX = x(a)
       let prevY = y(prices[a])
       for (let i = a + 1; i <= Math.ceil(b); i++) {

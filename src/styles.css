@@ -622,7 +622,7 @@ button {
 
 .recap-item {
   display: grid;
-  grid-template-columns: 34px 1fr auto;
+  grid-template-columns: minmax(34px, auto) 1fr auto;
   gap: 10px;
   align-items: baseline;
   padding: 10px 0;
@@ -1031,4 +1031,80 @@ button {
 
 .unlock b {
   font-weight: 700;
+}
+
+.play-meta {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.play-date {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ---------- luck ---------- */
+
+.luck {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  display: grid;
+  gap: 6px;
+}
+
+.hist {
+  position: relative;
+  margin: 8px 0 2px;
+}
+
+.hist-bars {
+  height: 64px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.hist-bars i {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  background: var(--well);
+}
+
+.hist-bars i.below {
+  background: var(--ink-4);
+}
+
+.hist-bars i.me {
+  background: var(--ink);
+}
+
+.hist-marker {
+  position: absolute;
+  top: -4px;
+  height: 72px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
+}
+
+.hist-axis {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.hist-me {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.luck-note {
+  font-size: 12px;
+  color: var(--ink-3);
 }

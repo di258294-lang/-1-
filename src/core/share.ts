@@ -1,4 +1,4 @@
-import { PLAY_TICKS, playPrice, type Market } from './market'
+import { playPrice, type Market } from './market'
 import type { RoundResult } from './round'
 import { formatPct } from './format'
 import { PRODUCTS } from './products'
@@ -12,7 +12,7 @@ const SLICES = 10
  * Korean market convention.
  */
 export function timelineSquares(market: Market, held: boolean[]) {
-  const per = PLAY_TICKS / SLICES
+  const per = market.playTicks / SLICES
   let out = ''
   for (let i = 0; i < SLICES; i++) {
     const from = Math.round(i * per)
@@ -37,7 +37,8 @@ export function shareText(opts: {
 }) {
   const { market, result, day, url } = opts
   const name = PRODUCTS[market.product].name
-  const head = day === null ? `HOLD 연습 · ${name}` : `HOLD #${day} · ${name}`
+  const mode = market.length === 'long' ? '장기 1년' : '연습'
+  const head = day === null ? `HOLD ${mode} · ${name}` : `HOLD #${day} · ${name}`
   return [
     `${head}  ${formatPct(result.yourReturn, 1)}`,
     `그냥 들고 있었으면 ${formatPct(result.buyHoldReturn, 1)}`,

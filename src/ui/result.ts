@@ -2,15 +2,29 @@ import { direction, formatPct, formatWon } from '../core/format'
 import { analyzeRound, PROFILE_MIN_ROUNDS, profileFrom, roundInsight, TYPES } from '../core/habits'
 import { seasonLabel } from '../core/season'
 import { save } from '../core/storage'
-import { HISTORY_TICKS, PLAY_TICKS, TICKS_PER_SECOND, type Market } from '../core/market'
+import { calendarLabel, dayOf, playPrice, TICKS_PER_SECOND, type Market } from '../core/market'
 import { productLesson } from '../core/lessons'
 import { PRODUCTS, type ProductKey } from '../core/products'
 import type { RoundResult } from '../core/round'
 import type { Mode, Navigate, Screen } from './app'
 import { Chart } from './chart'
 import { h, icons, svg } from './dom'
+import { luckCard } from './luck'
 import { startPractice } from './products'
 import { shareResult } from './share'
+
+/** Long rounds have many headlines: show the five that moved the price most. */
+function recapNews(market: Market) {
+  if (market.length !== 'long') return market.news
+  const move = (at: number) => {
+    const to = Math.min(market.playTicks, at + 30)
+    return Math.abs(Math.log(playPrice(market, to) / playPrice(market, Math.max(0, at - 1))))
+  }
+  return [...market.news]
+    .sort((a, b) => move(b.impactAt) - move(a.impactAt))
+    .slice(0, 5)
+    .sort((a, b) => a.at - b.at)
+}
 
 const KICKER = { warn: '이번 판에서 보인 습관', good: '이번 판에서 잘한 점', none: '이번 판의 습관' } as const
 
@@ -37,12 +51,12 @@ export function resultScreen(
   const draw = () =>
     chart.draw(
       {
-        from: HISTORY_TICKS - 20,
-        to: HISTORY_TICKS + PLAY_TICKS,
-        head: HISTORY_TICKS + PLAY_TICKS,
+        from: market.historyTicks - market.ticksPerDay,
+        to: market.historyTicks + market.playTicks,
+        head: market.historyTicks + market.playTicks,
         held: result.held,
         holdingNow: false,
-        marks: market.news.map((n) => HISTORY_TICKS + n.at),
+        marks: market.news.map((n) => market.historyTicks + n.at),
         showHeadTag: false,
       },
       false,
@@ -50,7 +64,8 @@ export function resultScreen(
   requestAnimationFrame(draw)
   window.addEventListener('resize', draw)
 
-  const again = () => startPractice(go, market.product)
+  const isLong = market.length === 'long'
+  const again = () => startPractice(go, market.product, market.length)
 
   const share = () =>
     shareResult({
@@ -87,15 +102,15 @@ export function resultScreen(
   const recap = h(
     'section',
     { class: 'recap' },
-    h('h2', null, '그때 나온 뉴스'),
-    ...market.news.map((n) => {
-      const sec = Math.floor(n.at / TICKS_PER_SECOND)
+    h('h2', null, isLong ? `크게 움직인 뉴스 (전체 ${market.news.length}개 중)` : '그때 나온 뉴스'),
+    ...recapNews(market).map((n) => {
+      const when = isLong ? calendarLabel(dayOf(market, n.at)) : `${Math.floor(n.at / TICKS_PER_SECOND)}초`
       const verdict =
         n.kind === 'filing' ? product.filingLabel : n.actual === n.implied ? '지라시 · 맞았어요' : '지라시 · 틀렸어요'
       return h(
         'div',
         { class: 'recap-item' },
-        h('span', { class: 'recap-time num' }, `${sec}초`),
+        h('span', { class: 'recap-time num' }, when),
         h('span', null, n.headline, h('span', { class: 'recap-kind' }, verdict)),
         h('span', { class: `recap-out ${n.actual > 0 ? 'up' : 'down'}` }, n.actual > 0 ? '올랐어요' : '내렸어요'),
       )
@@ -109,7 +124,11 @@ export function resultScreen(
       { class: 'topbar' },
       h('button', { class: 'icon-btn', 'aria-label': '홈으로', onclick: () => go({ name: 'home' }) }, svg(icons.close)),
     ),
-    h('p', { class: 'result-title' }, `${mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : '연습'} · ${product.name}`),
+    h(
+      'p',
+      { class: 'result-title' },
+      `${mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : isLong ? '장기 모드 · 1년' : '연습'} · ${product.name}`,
+    ),
     h('h1', { class: 'result-grade' }, result.grade.title),
     h('p', { class: 'result-line' }, result.grade.line),
     ...unlocked.map((k) =>
@@ -142,8 +161,11 @@ export function resultScreen(
       { class: 'rows' },
       row('내 수익률', result.yourReturn, true),
       row('그냥 들고 있었으면', result.buyHoldReturn),
-      row('1초 단위로 완벽했다면', result.perfectReturn),
+      // Over a year, perfect per-second timing is a meaningless number; the
+      // deposit rate is the benchmark investors actually use.
+      isLong ? row('예금에만 넣었다면', result.cashReturn) : row('1초 단위로 완벽했다면', result.perfectReturn),
     ),
+    luckCard(market, result.held),
     h(
       'p',
       { class: 'fine num' },

@@ -1,13 +1,18 @@
-import { PLAY_TICKS, playPrice, TICKS_PER_SECOND, type Market } from './market'
+import { playPrice, TICKS_PER_SECOND, TRADING_DAYS_PER_YEAR, type Market } from './market'
 
 export const START_EQUITY = 10_000_000
 /** Stock fee, charged on every buy and every sell. Other products set their own. */
 export const FEE_RATE = 0.001
 /**
- * Interest on idle cash, per tick (about 0.3% over a round). Small on
- * purpose: sitting out is a real choice, not a free win.
+ * Interest on idle cash, per year, like a Korean savings deposit. A one-month
+ * round earns about 0.25%, a one-year round about 3%: sitting out is a real
+ * choice, not a free win.
  */
-export const CASH_RATE_PER_TICK = 0.0000075
+export const CASH_RATE_ANNUAL = 0.03
+
+export function cashRatePerTick(market: Market) {
+  return (1 + CASH_RATE_ANNUAL) ** (1 / (TRADING_DAYS_PER_YEAR * market.ticksPerDay)) - 1
+}
 
 export type Round = {
   market: Market
@@ -43,7 +48,7 @@ export function createRound(market: Market, startEquity = START_EQUITY): Round {
 }
 
 export function isOver(round: Round) {
-  return round.tick >= PLAY_TICKS
+  return round.tick >= round.market.playTicks
 }
 
 export function setHolding(round: Round, holding: boolean) {
@@ -62,13 +67,14 @@ export function setHolding(round: Round, holding: boolean) {
 
 /** Advance the simulation up to (and including) the given play tick. */
 export function advanceTo(round: Round, target: number) {
-  const end = Math.min(target, PLAY_TICKS)
+  const end = Math.min(target, round.market.playTicks)
+  const cashRate = cashRatePerTick(round.market)
   while (round.tick < end) {
     const t = round.tick
     if (round.holding) {
       round.equity *= playPrice(round.market, t + 1) / playPrice(round.market, t)
     } else {
-      const earned = round.equity * CASH_RATE_PER_TICK
+      const earned = round.equity * cashRate
       round.equity += earned
       round.interest += earned
     }
@@ -91,6 +97,8 @@ export type RoundResult = {
   yourReturn: number
   buyHoldReturn: number
   perfectReturn: number
+  /** What the money would have earned sitting in cash the whole time. */
+  cashReturn: number
   trades: number
   fees: number
   interest: number
@@ -106,8 +114,9 @@ export type RoundResult = {
 export function perfectReturn(market: Market) {
   const step = TICKS_PER_SECOND
   let r = 1
-  for (let t = 0; t < PLAY_TICKS; t += step) {
-    const move = playPrice(market, Math.min(t + step, PLAY_TICKS)) / playPrice(market, t)
+  const end = market.playTicks
+  for (let t = 0; t < end; t += step) {
+    const move = playPrice(market, Math.min(t + step, end)) / playPrice(market, t)
     if (move > 1) r *= move
   }
   return r - 1
@@ -131,7 +140,7 @@ export function gradeFor(yourReturn: number, buyHold: number, heldRatio: number)
 
 export function summarize(round: Round): RoundResult {
   const first = playPrice(round.market, 0)
-  const last = playPrice(round.market, PLAY_TICKS)
+  const last = playPrice(round.market, round.market.playTicks)
   const buyHoldReturn = last / first - 1
   const yourReturn = round.equity / round.startEquity - 1
   const heldTicks = round.held.filter(Boolean).length
@@ -142,6 +151,7 @@ export function summarize(round: Round): RoundResult {
     yourReturn,
     buyHoldReturn,
     perfectReturn: perfectReturn(round.market),
+    cashReturn: (1 + cashRatePerTick(round.market)) ** round.market.playTicks - 1,
     trades: round.trades,
     fees: round.fees,
     interest: round.interest,

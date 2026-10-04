@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { analyzeRound, profileFrom, roundInsight, tradesFrom, type HabitScores } from './habits'
-import { COMPANIES, HISTORY_TICKS, PLAY_TICKS, type Market, type NewsEvent } from './market'
+import { COMPANIES, type Market, type NewsEvent } from './market'
+
+const PLAY_TICKS = 400
+const HISTORY_TICKS = 120
 
 /** A market whose play-relative price at tick t is price(t). */
 function marketOf(price: (t: number) => number, news: NewsEvent[] = []): Market {
   const prices = Array.from({ length: HISTORY_TICKS + PLAY_TICKS + 1 }, (_, i) =>
     price(Math.max(0, i - HISTORY_TICKS)),
   )
-  return { seed: 0, product: 'stock', company: COMPANIES[0], prices, news, feeRate: 0.001 }
+  return {
+    seed: 0, product: 'stock', length: 'short', company: COMPANIES[0],
+    playTicks: PLAY_TICKS, historyTicks: HISTORY_TICKS, ticksPerDay: 20, prices, news, feeRate: 0.001,
+  }
 }
 
 /** held[] that is true on [a, b) for each range. */
@@ -39,7 +45,7 @@ describe('analyzeRound', () => {
     expect(roundInsight(h).title).toBe('손실을 끝까지 버텼어요')
   })
 
-  it('only claims losers were held longer when they were', () => {
+  it('names the disposition effect from sell rates while up versus down', () => {
     // A slow 6% slide held for 19s, then a 2s pop that is sold at the top.
     const price = (t: number) =>
       t < 200 ? 10_000 * (1 - 0.0003 * t) : 9_400 * (1 + 0.003 * (Math.min(t, 230) - 200))
@@ -47,7 +53,9 @@ describe('analyzeRound', () => {
     const insight = roundInsight(h)
     expect(insight.habit).toBe('holder')
     expect(h.facts.avgLossHoldSec).toBeGreaterThan(h.facts.avgWinHoldSec * 1.5)
-    expect(insight.title).toBe('손실은 오래, 수익은 짧게 들고 있었어요')
+    expect(h.facts.comparableRates).toBe(true)
+    expect(h.facts.sellRateUp / h.facts.sellRateDown).toBeGreaterThan(1.5)
+    expect(insight.title).toBe('수익은 빨리 팔고, 손실은 버텼어요')
   })
 
   it('flags overtrading', () => {

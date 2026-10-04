@@ -1,6 +1,35 @@
 import type { Company } from './market'
 
 /**
+ * Statistical model of a product, in annualized terms so the same numbers
+ * drive a one-month round and a one-year round. Volatilities sit near the
+ * real asset classes (single Korean stock ~35%, KOSPI ~20%, gold ~15%,
+ * 10y government bond price ~7%, large crypto ~75%).
+ */
+export type Model = {
+  /**
+   * Total annualized volatility. The engine splits this variance between
+   * news jumps, trend regimes and tick noise, so a year of play swings about
+   * as much as the real asset does.
+   */
+  sigma: number
+  /** Degrees of freedom of the Student-t shocks; lower means fatter tails. */
+  tailNu: number
+  /** Expected headlines per trading day (Poisson arrivals). */
+  newsPerDay: number
+  /** Typical news jump as a log return (bonds: yield move in decimal). */
+  jump: number
+  /** Bonds are priced from a simulated yield instead of a price walk. */
+  bond?: {
+    yield0: number
+    /** Total annualized volatility of the yield, in decimal (0.009 = 90bp). */
+    sigmaYield: number
+    /** Mean-reversion speed of the yield (Vasicek kappa, per year). */
+    kappa: number
+  }
+}
+
+/**
  * Tradable products. Each one moves differently so that playing it teaches
  * what that kind of asset is like. Every name and headline is invented.
  */
@@ -20,10 +49,7 @@ export type Product = {
   assets: readonly Company[]
   filings: Headlines
   rumors: Headlines
-  /** Multipliers on the base stock model. */
-  vol: number
-  drift: number
-  shock: number
+  model: Model
   rumorShare: number
   fee: number
   priceRange: [number, number]
@@ -84,9 +110,7 @@ export const PRODUCTS: Record<ProductKey, Product> = {
       up: ['{n} 인수합병설 확산', '{n}, 대기업 납품 임박설', '큰손이 {n} 모으고 있다는 소문', '{n} 실적 깜짝 개선 얘기 돌아'],
       down: ['{n} 회계 감리설 확산', '{n} 핵심 인력 대거 이탈설', '{n} 최대주주 지분 매각설', '{n} 계약 해지 가능성 제기'],
     },
-    vol: 1,
-    drift: 1,
-    shock: 1,
+    model: { sigma: 0.35, tailNu: 4, newsPerDay: 0.12, jump: 0.04 },
     rumorShare: 0.45,
     fee: 0.001,
     priceRange: [8000, 64000],
@@ -99,9 +123,9 @@ export const PRODUCTS: Record<ProductKey, Product> = {
     filingLabel: '발표',
     blindName: '이 채권',
     assets: [
-      { name: '가상 국고채 10년', code: 'KTB10', sector: '국채' },
-      { name: '가상 국고채 3년', code: 'KTB3', sector: '국채' },
-      { name: '가상 우량 회사채', code: 'CORP-AA', sector: '회사채' },
+      { name: '가상 국고채 10년', code: 'KTB10', sector: '국채', duration: 8.5, convexity: 85 },
+      { name: '가상 국고채 3년', code: 'KTB3', sector: '국채', duration: 2.8, convexity: 9 },
+      { name: '가상 우량 회사채', code: 'CORP-AA', sector: '회사채', duration: 4.2, convexity: 21 },
     ],
     filings: {
       up: ['한국은행, 기준금리 0.25%p 인하', '물가 상승률 예상보다 크게 둔화', '중앙은행 총재 "금리 인하 검토"', '경기 침체 우려 확산'],
@@ -111,9 +135,8 @@ export const PRODUCTS: Record<ProductKey, Product> = {
       up: ['이번 달 금리 내린다는 얘기 돌아', '큰손들이 국채 사들인다는 소문'],
       down: ['깜짝 금리 인상설 확산', '국채 발행 더 늘린다는 얘기 돌아'],
     },
-    vol: 0.35,
-    drift: 0.3,
-    shock: 0.45,
+    // Price comes from the yield: dP/P = y*dt - D*dy + C/2*dy^2.
+    model: { sigma: 0, tailNu: 5, newsPerDay: 0.1, jump: 0.0015, bond: { yield0: 0.03, sigmaYield: 0.009, kappa: 0.5 } },
     rumorShare: 0.35,
     fee: 0.0005,
     priceRange: [95000, 110000],
@@ -137,9 +160,7 @@ export const PRODUCTS: Record<ProductKey, Product> = {
       up: ['대형 금융사가 금 사 모은다는 소문', '분쟁 더 커질 거라는 얘기 돌아'],
       down: ['중앙은행 금 매도설', '협상 곧 타결된다는 얘기 돌아'],
     },
-    vol: 0.55,
-    drift: 0.5,
-    shock: 0.8,
+    model: { sigma: 0.15, tailNu: 5, newsPerDay: 0.1, jump: 0.015 },
     rumorShare: 0.3,
     fee: 0.001,
     priceRange: [120000, 160000],
@@ -166,9 +187,7 @@ export const PRODUCTS: Record<ProductKey, Product> = {
       up: ['유명 인플루언서가 {n} 샀다는 얘기', '{n} 곧 대형 호재 나온다는 소문', '고래 지갑이 {n} 모으는 중이라는 얘기'],
       down: ['{n} 개발자 잠적설', '{n} 상장폐지 가능성 제기', '큰손이 {n} 던진다는 소문'],
     },
-    vol: 2.2,
-    drift: 2,
-    shock: 1.8,
+    model: { sigma: 0.75, tailNu: 3, newsPerDay: 0.15, jump: 0.07 },
     rumorShare: 0.75,
     fee: 0.0005,
     priceRange: [500, 5000],
@@ -192,9 +211,8 @@ export const PRODUCTS: Record<ProductKey, Product> = {
       up: ['연기금이 대거 들어온다는 얘기', '정책 호재 곧 나온다는 소문'],
       down: ['대형 펀드 환매 쏟아진다는 얘기', '공매도 세력 몰려온다는 소문'],
     },
-    vol: 1,
-    drift: 0.4,
-    shock: 0.5,
+    // The model describes the index; the product is rebalanced to 2x daily.
+    model: { sigma: 0.2, tailNu: 4, newsPerDay: 0.1, jump: 0.025 },
     rumorShare: 0.4,
     fee: 0.001,
     priceRange: [8000, 20000],

@@ -1,22 +1,22 @@
-import { generateMarket } from '../core/market'
+import { generateMarket, type RoundLength } from '../core/market'
 import { PRODUCT_ORDER, PRODUCTS, type ProductKey } from '../core/products'
 import { hashString } from '../core/rng'
 import { save } from '../core/storage'
 import type { Navigate } from './app'
 import { h } from './dom'
 
-export function startPractice(go: Navigate, product: ProductKey) {
-  const seed = hashString(`practice/${product}/${Date.now()}/${Math.random()}`)
-  go({ name: 'play', mode: { kind: 'practice' }, market: generateMarket(seed, product) })
+export function startPractice(go: Navigate, product: ProductKey, length: RoundLength = 'short') {
+  const seed = hashString(`practice/${product}/${length}/${Date.now()}/${Math.random()}`)
+  go({ name: 'play', mode: { kind: 'practice' }, market: generateMarket(seed, product, length) })
 }
 
 /** Bottom sheet: pick what to practice. Locked products say how to open them. */
-export function showProductSheet(go: Navigate) {
+export function showProductSheet(go: Navigate, length: RoundLength = 'short') {
   const played = save.roundsPlayed()
   const close = () => scrim.remove()
   const pick = (key: ProductKey) => () => {
     close()
-    startPractice(go, key)
+    startPractice(go, key, length)
   }
 
   const rows = PRODUCT_ORDER.map((key) => {
@@ -46,8 +46,14 @@ export function showProductSheet(go: Navigate) {
     h(
       'div',
       { class: 'sheet' },
-      h('h2', { id: 'product-title' }, '무엇으로 연습할까요?'),
-      h('p', { class: 'sheet-body' }, '판을 할수록 새 상품이 열려요. 요일마다 오늘의 차트 상품도 바뀌어요.'),
+      h('h2', { id: 'product-title' }, length === 'long' ? '1년을 5분에, 무엇으로 할까요?' : '무엇으로 연습할까요?'),
+      h(
+        'p',
+        { class: 'sheet-body' },
+        length === 'long'
+          ? '장기 모드는 1년치 시장을 5분에 보여줘요. 짧은 판에서는 안 보이던 것들이 보여요.'
+          : '판을 할수록 새 상품이 열려요. 요일마다 오늘의 차트 상품도 바뀌어요.',
+      ),
       h('div', { class: 'product-list' }, ...rows),
     ),
   )

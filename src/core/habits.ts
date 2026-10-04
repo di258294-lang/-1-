@@ -1,4 +1,4 @@
-import { PLAY_TICKS, playPrice, TICKS_PER_SECOND, type Market } from './market'
+import { playPrice, TICKS_PER_SECOND, type Market } from './market'
 
 /**
  * Trading habits from behavioral finance, measured from one round's
@@ -58,12 +58,13 @@ export const PROFILE_WINDOW = 10
 
 const AFTER_EXIT_TICKS = 3 * TICKS_PER_SECOND
 const CHASE_LOOKBACK_TICKS = 2 * TICKS_PER_SECOND
-const CHASE_RISE = 0.025
+/** A chase is buying right after a move of this many standard deviations. */
+const CHASE_SIGMAS = 2
 const NEWS_REACTION_GRACE = 3
 
 export type Trade = {
   entry: number
-  /** Exclusive; PLAY_TICKS means it was closed at the bell. */
+  /** Exclusive; playTicks means it was closed at the bell. */
   exit: number
   ret: number
   /** Worst point during the trade, relative to entry (<= 0). */
@@ -71,15 +72,16 @@ export type Trade = {
 }
 
 export function tradesFrom(market: Market, held: boolean[]): Trade[] {
+  const playTicks = market.playTicks
   const trades: Trade[] = []
   let t = 0
-  while (t < PLAY_TICKS) {
+  while (t < playTicks) {
     if (!held[t]) {
       t++
       continue
     }
     const entry = t
-    while (t < PLAY_TICKS && held[t]) t++
+    while (t < playTicks && held[t]) t++
     const p0 = playPrice(market, entry)
     let low = p0
     for (let i = entry; i <= t; i++) low = Math.min(low, playPrice(market, i))
@@ -106,49 +108,109 @@ export type RoundHabits = {
     filings: number
     filingReactions: number
     fees: number
+    /** Chance of selling within one second while up / while down. */
+    sellRateUp: number
+    sellRateDown: number
+    /** True when the round had enough time both up and down to compare them. */
+    comparableRates: boolean
   }
 }
 
 const ramp = (x: number, lo: number, hi: number) => Math.max(0, Math.min(1, (x - lo) / (hi - lo)))
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
 
+/**
+ * Robust per-tick volatility of this chart: the median absolute deviation of
+ * tick log returns, scaled to a standard deviation. Immune to news jumps.
+ */
+export function tickVolatility(market: Market) {
+  const r: number[] = []
+  for (let t = 1; t <= market.playTicks; t++) r.push(Math.log(playPrice(market, t) / playPrice(market, t - 1)))
+  const sorted = [...r].sort((a, b) => a - b)
+  const med = sorted[Math.floor(sorted.length / 2)]
+  const dev = r.map((x) => Math.abs(x - med)).sort((a, b) => a - b)
+  return Math.max(1e-6, 1.4826 * dev[Math.floor(dev.length / 2)])
+}
+
+/** Pseudo-ticks of prior exposure when shrinking sell rates (empirical Bayes). */
+const HAZARD_PRIOR_TICKS = 30
+/** Ticks (2 s) a player must have spent both up and down before comparing sell rates. */
+const MIN_STATE_TICKS = 20
+
 export function analyzeRound(market: Market, held: boolean[], fees: number): RoundHabits {
+  const playTicks = market.playTicks
   const trades = tradesFrom(market, held)
   const losses = trades.filter((t) => t.ret < 0)
   const wins = trades.filter((t) => t.ret > 0)
   const sec = (t: Trade) => (t.exit - t.entry) / TICKS_PER_SECOND
+  // Every price threshold below is in units of this chart's own volatility,
+  // so a 2% dip means the same thing on a calm bond as on a wild coin.
+  const vol = tickVolatility(market)
+  const dayVol = vol * Math.sqrt(market.ticksPerDay)
 
   const avgLossWorst = mean(losses.map((t) => t.worst))
   const avgLossHoldSec = mean(losses.map(sec))
   const avgWinHoldSec = mean(wins.map(sec))
 
-  // Holding losers: how deep you let a losing trade go, plus whether you
-  // held losers longer than winners (the disposition effect).
+  // Disposition effect (Shefrin & Statman 1985; Odean 1998): how likely you
+  // are to sell on any given tick while the trade is up versus while it is
+  // down. Rates are shrunk toward your overall sell rate so a round with two
+  // trades cannot produce an extreme ratio.
+  let expGain = 0
+  let expLoss = 0
+  let sellGain = 0
+  let sellLoss = 0
+  let entryPrice = 0
+  for (let t = 0; t < playTicks; t++) {
+    if (t > 0 && held[t - 1]) {
+      const up = playPrice(market, t) > entryPrice
+      if (up) expGain++
+      else expLoss++
+      if (!held[t]) {
+        if (up) sellGain++
+        else sellLoss++
+      }
+    }
+    if (held[t] && (t === 0 || !held[t - 1])) entryPrice = playPrice(market, t)
+  }
+  const hAll = (sellGain + sellLoss + 1) / (expGain + expLoss + HAZARD_PRIOR_TICKS)
+  const hGain = (sellGain + HAZARD_PRIOR_TICKS * hAll) / (expGain + HAZARD_PRIOR_TICKS)
+  const hLoss = (sellLoss + HAZARD_PRIOR_TICKS * hAll) / (expLoss + HAZARD_PRIOR_TICKS)
+  // Compare sell rates only after real time spent both up and down.
+  const enough = trades.length >= 2 && expGain >= MIN_STATE_TICKS && expLoss >= MIN_STATE_TICKS
+
+  // Holding losers: depth in daily volatilities, plus a low sell rate while down.
   let holder = 0
   if (losses.length) {
-    const depth = ramp(-avgLossWorst, 0.025, 0.07)
-    const disposition = wins.length ? ramp(avgLossHoldSec / Math.max(avgWinHoldSec, 0.1), 1.5, 4) : depth
-    holder = depth * 0.6 + disposition * 0.4
+    const depth = ramp(-avgLossWorst / dayVol, 1.5, 4)
+    holder = enough ? 0.5 * depth + 0.5 * ramp(Math.log(hAll / hLoss), 0.15, 1) : depth
   }
 
-  // Selling winners early: what the price did right after you sold.
-  const earlyExits = wins.filter((t) => t.exit + AFTER_EXIT_TICKS <= PLAY_TICKS)
+  // Selling winners early: the move right after you sold, in volatility
+  // units, plus a high sell rate while up.
+  const earlyExits = wins.filter((t) => t.exit + AFTER_EXIT_TICKS <= playTicks)
   const missedAfterWin = mean(
     earlyExits.map((t) => playPrice(market, t.exit + AFTER_EXIT_TICKS) / playPrice(market, t.exit) - 1),
   )
-  const chicken = earlyExits.length ? ramp(missedAfterWin, 0.012, 0.045) : 0
+  let chicken = 0
+  if (earlyExits.length) {
+    const missed = ramp(missedAfterWin / (vol * Math.sqrt(AFTER_EXIT_TICKS)), 0.6, 1.8)
+    chicken = enough ? 0.5 * missed + 0.5 * ramp(Math.log(hGain / hAll), 0.15, 1) : missed
+  }
 
-  const scalper = ramp(trades.length, 6, 14)
+  // Normalized to trades per 40 seconds so short and long rounds compare.
+  const scalper = ramp(trades.length * (400 / playTicks), 6, 14)
 
   const chaseEntries = trades.filter((t) => {
     const from = Math.max(0, t.entry - CHASE_LOOKBACK_TICKS)
-    return t.entry - from >= 5 && playPrice(market, t.entry) / playPrice(market, from) - 1 > CHASE_RISE
+    const rise = Math.log(playPrice(market, t.entry) / playPrice(market, from))
+    return t.entry - from >= 5 && rise > CHASE_SIGMAS * vol * Math.sqrt(t.entry - from)
   }).length
   const chaser = trades.length ? ramp(chaseEntries / trades.length, 0.25, 0.75) * Math.min(1, trades.length / 2) : 0
 
   // Did you act in the headline's direction before the price confirmed it?
   const reacted = (from: number, to: number, implied: 1 | -1) => {
-    for (let t = Math.max(1, from); t < to && t < PLAY_TICKS; t++) {
+    for (let t = Math.max(1, from); t < to && t < playTicks; t++) {
       if (implied > 0 && held[t] && !held[t - 1]) return true
       if (implied < 0 && !held[t] && held[t - 1]) return true
     }
@@ -191,6 +253,9 @@ export function analyzeRound(market: Market, held: boolean[], fees: number): Rou
       filings,
       filingReactions,
       fees,
+      sellRateUp: 1 - (1 - hGain) ** TICKS_PER_SECOND,
+      sellRateDown: 1 - (1 - hLoss) ** TICKS_PER_SECOND,
+      comparableRates: enough,
     },
   }
 }
@@ -210,21 +275,32 @@ export function roundInsight(h: RoundHabits): Insight {
   const top = HABIT_KEYS.reduce((a, b) => (h.scores[b] > h.scores[a] ? b : a))
   if (h.scores[top] >= 0.5) {
     switch (top) {
-      case 'holder':
+      case 'holder': {
         // Quote whichever evidence actually drove the score.
-        return f.winTrades && f.avgLossHoldSec > f.avgWinHoldSec * 1.5
-          ? {
-              tone: 'warn',
-              habit: top,
-              title: '손실은 오래, 수익은 짧게 들고 있었어요',
-              line: `손실 난 매매는 평균 ${secs(f.avgLossHoldSec)}, 수익 난 매매는 ${secs(f.avgWinHoldSec)} 들고 있었어요. 돈 버는 사람들은 반대로 해요.`,
-            }
-          : {
-              tone: 'warn',
-              habit: top,
-              title: '손실을 끝까지 버텼어요',
-              line: `손실 난 매매에서 평균 -${pct(f.avgLossWorst)}까지 내려가도 들고 있었어요.`,
-            }
+        const ratio = f.sellRateUp / Math.max(f.sellRateDown, 1e-6)
+        if (f.comparableRates && ratio >= 1.5) {
+          return {
+            tone: 'warn',
+            habit: top,
+            title: '수익은 빨리 팔고, 손실은 버텼어요',
+            line: `수익 중일 때 1초 안에 팔 확률이 손실 중일 때의 ${ratio.toFixed(1)}배였어요. 처분 효과라고 부르는, 개인 투자자가 돈을 잃는 대표적인 습관이에요.`,
+          }
+        }
+        if (f.winTrades && f.avgLossHoldSec > f.avgWinHoldSec * 1.5) {
+          return {
+            tone: 'warn',
+            habit: top,
+            title: '손실은 오래, 수익은 짧게 들고 있었어요',
+            line: `손실 난 매매는 평균 ${secs(f.avgLossHoldSec)}, 수익 난 매매는 ${secs(f.avgWinHoldSec)} 들고 있었어요. 돈 버는 사람들은 반대로 해요.`,
+          }
+        }
+        return {
+          tone: 'warn',
+          habit: top,
+          title: '손실을 끝까지 버텼어요',
+          line: `손실 난 매매에서 평균 -${pct(f.avgLossWorst)}까지 내려가도 들고 있었어요. 이 종목의 하루 평균 흔들림보다 훨씬 큰 폭이에요.`,
+        }
+      }
       case 'chicken':
         return {
           tone: 'warn',
@@ -237,14 +313,14 @@ export function roundInsight(h: RoundHabits): Insight {
           tone: 'warn',
           habit: top,
           title: '너무 자주 사고팔았어요',
-          line: `40초 동안 ${h.trades}번 매매했고, 수수료로만 ${man(f.fees)}이 나갔어요.`,
+          line: `${h.trades}번 매매했고, 수수료로만 ${man(f.fees)}이 나갔어요.`,
         }
       case 'chaser':
         return {
           tone: 'warn',
           habit: top,
           title: '급하게 오른 뒤에 올라탔어요',
-          line: `${h.trades}번 산 것 중 ${f.chaseEntries}번이 2초 사이 2.5% 넘게 오른 직후였어요.`,
+          line: `${h.trades}번 산 것 중 ${f.chaseEntries}번이 2초 사이 평소 흔들림의 두 배 넘게 급등한 직후였어요.`,
         }
       case 'rumor':
         return {

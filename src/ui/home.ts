@@ -1,9 +1,9 @@
 import { dateKey, dayNumber, dailySeed, msUntilNextDay, nextKey } from '../core/daily'
-import { dailyProduct, PRODUCTS, WEEKDAY_NAMES } from '../core/products'
+import { dailyProduct, PRODUCTS } from '../core/products'
 import { direction, formatCountdown, formatPct, formatPrice, formatWon, iEyo } from '../core/format'
 import { PROFILE_MIN_ROUNDS, profileFrom, TYPES } from '../core/habits'
 import { SEASON_START, seasonDaysLeft, seasonLabel } from '../core/season'
-import { generateMarket, HISTORY_TICKS, PLAY_TICKS, playPrice, type Market } from '../core/market'
+import { generateMarket, playPrice, type Market } from '../core/market'
 import { save, type SavedDaily } from '../core/storage'
 import type { Navigate, Screen } from './app'
 import { Chart } from './chart'
@@ -22,7 +22,7 @@ function dateLabel(key: string) {
 
 function squaresFor(market: Market, held: boolean[]) {
   const row = h('div', { class: 'squares', 'aria-hidden': 'true' })
-  const per = PLAY_TICKS / 10
+  const per = market.playTicks / 10
   for (let i = 0; i < 10; i++) {
     const from = Math.round(i * per)
     const to = Math.round((i + 1) * per)
@@ -58,7 +58,7 @@ export function homeScreen(go: Navigate): Screen {
   const hero = h(
     'div',
     { class: 'home-hero' },
-    h('p', { class: 'home-date' }, `${dateLabel(key)} · ${day}번째 차트`),
+    h('p', { class: 'home-date' }, `${dateLabel(key)} · 내일은 ${tomorrowProduct.name}`),
     h(
       'h1',
       { class: 'home-title' },
@@ -115,14 +115,9 @@ export function homeScreen(go: Navigate): Screen {
     ),
     h(
       'button',
-      { class: 'list-row', onclick: () => withIntro(() => showProductSheet(go))() },
-      h('span', { class: 'list-label' }, '내일의 차트', h('small', null, '요일마다 상품이 바뀌어요')),
-      h(
-        'span',
-        { class: 'list-value' },
-        `${WEEKDAY_NAMES[new Date(`${tomorrow}T00:00:00Z`).getUTCDay()]} · ${tomorrowProduct.name}`,
-        h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
-      ),
+      { class: 'list-row', onclick: () => withIntro(() => showProductSheet(go, 'long'))() },
+      h('span', { class: 'list-label' }, '장기 모드', h('small', null, '1년치 시장을 5분에')),
+      h('span', { class: 'list-value' }, '5분', h('span', { class: 'chev', 'aria-hidden': 'true' }, '›')),
     ),
     h(
       'button',
@@ -152,7 +147,7 @@ export function homeScreen(go: Navigate): Screen {
 function teaser(market: Market, productName: string, cleanups: Array<() => void>) {
   const canvas = h('canvas', { 'aria-label': '오늘 차트의 시작 전 흐름' })
   const open = market.prices[0]
-  const now = market.prices[HISTORY_TICKS]
+  const now = market.prices[market.historyTicks]
   const change = now / open - 1
   const card = h(
     'section',
@@ -175,7 +170,15 @@ function teaser(market: Market, productName: string, cleanups: Array<() => void>
   const chart = new Chart(canvas, market, { top: 8, right: 8, bottom: 8, left: 0 })
   const draw = () =>
     chart.draw(
-      { from: 0, to: HISTORY_TICKS + 60, head: HISTORY_TICKS, held: [], holdingNow: false, marks: [], showHeadTag: false },
+      {
+        from: 0,
+        to: market.historyTicks + 3 * market.ticksPerDay,
+        head: market.historyTicks,
+        held: [],
+        holdingNow: false,
+        marks: [],
+        showHeadTag: false,
+      },
       false,
     )
   requestAnimationFrame(draw)

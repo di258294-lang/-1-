@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { createRng, hashString } from './rng'
-import { generateMarket, HISTORY_TICKS, PLAY_TICKS, playPrice } from './market'
-import { advanceTo, CASH_RATE_PER_TICK, createRound, FEE_RATE, setHolding, START_EQUITY, summarize } from './round'
+import { generateMarket, playPrice } from './market'
+
+// Short rounds: 20 trading days of 20 ticks after 6 days of history.
+const PLAY_TICKS = 400
+const HISTORY_TICKS = 120
+import { advanceTo, cashRatePerTick, createRound, FEE_RATE, setHolding, START_EQUITY, summarize } from './round'
 import { dateKey, dayNumber, msUntilNextDay, previousKey } from './daily'
 import { formatPct, formatWonDelta, iEyo } from './format'
 import { timelineSquares } from './share'
@@ -58,7 +62,7 @@ describe('round', () => {
     const r = createRound(generateMarket(5))
     advanceTo(r, PLAY_TICKS)
     const s = summarize(r)
-    expect(s.finalEquity).toBeCloseTo(START_EQUITY * (1 + CASH_RATE_PER_TICK) ** PLAY_TICKS, 4)
+    expect(s.finalEquity).toBeCloseTo(START_EQUITY * (1 + cashRatePerTick(r.market)) ** PLAY_TICKS, 4)
     expect(s.yourReturn).toBeGreaterThan(0.002)
     expect(s.yourReturn).toBeLessThan(0.004)
     expect(s.trades).toBe(0)
@@ -141,7 +145,7 @@ describe('season account', () => {
     const r = createRound(generateMarket(9), 5_000_000)
     advanceTo(r, PLAY_TICKS)
     expect(summarize(r).startEquity).toBe(5_000_000)
-    expect(summarize(r).finalEquity).toBeCloseTo(5_000_000 * (1 + CASH_RATE_PER_TICK) ** PLAY_TICKS, 4)
+    expect(summarize(r).finalEquity).toBeCloseTo(5_000_000 * (1 + cashRatePerTick(r.market)) ** PLAY_TICKS, 4)
   })
 })
 
@@ -157,11 +161,15 @@ describe('products', () => {
       }
     }
   })
-  it('makes the leveraged product move twice its index each tick', () => {
-    const m = generateMarket(77, 'lev2')
-    const u = m.underlying!
-    for (let i = 1; i < 50; i++) {
-      expect(m.prices[i] / m.prices[i - 1] - 1).toBeCloseTo(2 * (u[i] / u[i - 1] - 1), 10)
+  it('rebalances the leveraged product to 2x once per trading day', () => {
+    for (const length of ['short', 'long'] as const) {
+      const m = generateMarket(77, 'lev2', length)
+      const u = m.underlying!
+      const d = m.ticksPerDay
+      // Day over day the product returns exactly twice the index.
+      for (let i = d; i < m.prices.length; i += d) {
+        expect(m.prices[i] / m.prices[i - d] - 1).toBeCloseTo(2 * (u[i] / u[i - d] - 1), 10)
+      }
     }
   })
   it('hides the asset name in headlines during the round', () => {
@@ -198,5 +206,17 @@ describe('iEyo', () => {
     expect(iEyo('코인')).toBe('코인이에요')
     expect(iEyo('레버리지 2배')).toBe('레버리지 2배예요')
     expect(iEyo('주식')).toBe('주식이에요')
+  })
+})
+
+describe('cash benchmark', () => {
+  it('earns about 3% a year and about a month of that in a short round', () => {
+    const long = createRound(generateMarket(1, 'stock', 'long'))
+    advanceTo(long, long.market.playTicks)
+    expect(summarize(long).cashReturn).toBeCloseTo(0.03 * (250 / 252), 3)
+    const short = createRound(generateMarket(1))
+    advanceTo(short, short.market.playTicks)
+    expect(summarize(short).cashReturn).toBeGreaterThan(0.002)
+    expect(summarize(short).cashReturn).toBeLessThan(0.003)
   })
 })
