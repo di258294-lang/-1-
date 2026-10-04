@@ -299,6 +299,10 @@ function normRecord<T>(
   return out
 }
 
+// reach (platform team): settings.reminderHour and settings.reviewAsked.
+const isHour = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 23
+const isAskedKey = (v: unknown): v is string => v === '' || isDateKey(v)
+
 /** Turns any object into a valid current-version save, noting every repair in `issues`. */
 export function normalize(data: Json, issues: string[] = []): SaveFile {
   const f = emptySave()
@@ -339,6 +343,9 @@ export function normalize(data: Json, issues: string[] = []): SaveFile {
       if (nick === null) issues.push('settings.nick')
       f.settings.nick = nick ?? ''
     }
+    // reach (platform team): reminder hour and last review prompt.
+    f.settings.reminderHour = field(s, 'reminderHour', isHour, DEFAULT_SETTINGS.reminderHour, issues, 'settings')
+    f.settings.reviewAsked = field(s, 'reviewAsked', isAskedKey, DEFAULT_SETTINGS.reviewAsked, issues, 'settings')
   } else if (data.settings !== undefined) {
     issues.push('settings')
   }
@@ -875,6 +882,15 @@ export function createStore(backend: StorageBackend) {
             f.settings[k] = v
             changed = true
           }
+        }
+        // reach (platform team): reminder hour and last review prompt.
+        if (isHour(partial.reminderHour) && f.settings.reminderHour !== partial.reminderHour) {
+          f.settings.reminderHour = partial.reminderHour
+          changed = true
+        }
+        if (isAskedKey(partial.reviewAsked) && f.settings.reviewAsked !== partial.reviewAsked) {
+          f.settings.reviewAsked = partial.reviewAsked
+          changed = true
         }
         if (partial.nick !== undefined) {
           const nick = cleanName(partial.nick) ?? ''

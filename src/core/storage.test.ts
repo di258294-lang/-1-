@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { HabitRecord } from './habits'
 import { SEASON_START } from './season'
+import { DEFAULT_SETTINGS } from './types'
 import {
   blindBackend,
   coalescedWriter,
@@ -76,7 +77,7 @@ describe('migration v1 → v2', () => {
     expect(store.practice()).toEqual({ rounds: 3, traded: 3, best: 0.2 })
     // v1: 3 practice + 2 finished dailies. v2 counts the same for old data.
     expect(store.roundsPlayed()).toBe(5)
-    expect(store.getSettings()).toEqual({ sound: true, haptics: true, tapToggle: false, nick: '' })
+    expect(store.getSettings()).toEqual(DEFAULT_SETTINGS)
 
     const [legacy, full] = store.habitRecords()
     expect(legacy.at).toBe('')
@@ -155,7 +156,7 @@ describe('corrupt and invalid saves', () => {
     expect(store.habitRecords().map((h) => h.id)).toEqual(['a'])
     expect(store.streakState('2026-10-05').frozen).toEqual(['2026-10-03'])
     expect(store.pastSeasons().map((s) => s.season)).toEqual(['2026-09'])
-    expect(store.getSettings()).toEqual({ sound: false, haptics: true, tapToggle: false, nick: '' })
+    expect(store.getSettings()).toEqual({ ...DEFAULT_SETTINGS, sound: false })
     expect(backups).toHaveLength(1)
   })
 
@@ -375,7 +376,7 @@ describe('habits and settings', () => {
 
   it('update settings partially', () => {
     const { store, writes } = setup()
-    expect(store.updateSettings({ tapToggle: true })).toEqual({ sound: true, haptics: true, tapToggle: true, nick: '' })
+    expect(store.updateSettings({ tapToggle: true })).toEqual({ ...DEFAULT_SETTINGS, tapToggle: true })
     store.updateSettings({ tapToggle: true })
     expect(writes).toHaveLength(1)
     expect(store.updateSettings({ sound: false }).sound).toBe(false)
@@ -461,7 +462,7 @@ describe('nickname and pending challenge', () => {
     expect(createStore(memoryBackend(backend.peek())).getSettings().nick).toBe('지영')
     // A broken stored name is dropped (and the file backed up).
     const bad = parseSave(JSON.stringify({ v: 2, settings: { nick: 42, sound: false } }))
-    expect(bad.file.settings).toEqual({ sound: false, haptics: true, tapToggle: false, nick: '' })
+    expect(bad.file.settings).toEqual({ ...DEFAULT_SETTINGS, sound: false })
     expect(bad.issues).toContain('settings.nick')
   })
 
