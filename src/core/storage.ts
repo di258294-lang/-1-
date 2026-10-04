@@ -1,3 +1,4 @@
+import { cleanName } from './challenge'
 import { decodeHeld, encodeHeld } from './codec'
 import { HABIT_KEYS, type HabitCounts, type HabitKey, type HabitRecord, type HabitScores } from './habits'
 import { PRODUCT_ORDER, PRODUCTS, type ProductKey } from './products'
@@ -13,7 +14,7 @@ import {
 import { accountAfter, accountBefore } from './season'
 import { emptyMissionState, isMissionId, type ActiveMission, type MissionState } from './missions'
 import { freezesToApply, playedDays, streakDays, streakState, type StreakState } from './streak'
-import { DEFAULT_SETTINGS, type Settings } from './types'
+import { DEFAULT_SETTINGS, TOGGLE_KEYS, type Settings } from './types'
 
 /**
  * The save file: one JSON document under one key.
@@ -87,6 +88,11 @@ type SaveFile = {
   coach: CoachSave
   /** Closed seasons whose recap card was opened or dismissed ('yyyy-mm'). */
   seenSeasons: string[]
+  /**
+   * A friend's challenge code that could not be played yet (today's daily
+   * was not done). Cleared once it is used.
+   */
+  pendingChallenge: string | null
 }
 
 /** Missions and micro-lessons (see missions.ts, lessons.ts). */
@@ -110,6 +116,7 @@ function emptySave(): SaveFile {
     seasons: {},
     coach: { ...emptyMissionState(), lessons: [] },
     seenSeasons: [],
+    pendingChallenge: null,
   }
 }
 
@@ -125,6 +132,8 @@ const isBool = (x: unknown): x is boolean => typeof x === 'boolean'
 const isStr = (x: unknown): x is string => typeof x === 'string'
 const isProduct = (x: unknown): x is ProductKey => isStr(x) && Object.hasOwn(PRODUCTS, x)
 const isLength = (x: unknown): x is HabitRecord['length'] => x === 'short' || x === 'long'
+/** A challenge link code as it appears in ?c= (base64url, bounded). */
+const isChallengeCode = (x: unknown): x is string => isStr(x) && /^[A-Za-z0-9_-]{1,256}$/.test(x)
 
 /** 'yyyy-mm-dd' naming a real day. Years are bounded so streak walks stay short. */
 export function isDateKey(x: unknown): x is string {
@@ -310,8 +319,11 @@ export function normalize(data: Json, issues: string[] = []): SaveFile {
 
   if (isObj(data.settings)) {
     const s = data.settings
-    for (const k of Object.keys(DEFAULT_SETTINGS) as Array<keyof Settings>) {
-      f.settings[k] = field(s, k, isBool, DEFAULT_SETTINGS[k], issues, 'settings')
+    for (const k of TOGGLE_KEYS) f.settings[k] = field(s, k, isBool, DEFAULT_SETTINGS[k], issues, 'settings')
+    if (s.nick !== undefined) {
+      const nick = s.nick === '' ? '' : cleanName(s.nick)
+      if (nick === null) issues.push('settings.nick')
+      f.settings.nick = nick ?? ''
     }
   } else if (data.settings !== undefined) {
     issues.push('settings')
@@ -334,6 +346,7 @@ export function normalize(data: Json, issues: string[] = []): SaveFile {
   } else if (data.seenSeasons !== undefined) {
     issues.push('seenSeasons')
   }
+  f.pendingChallenge = field(data, 'pendingChallenge', (v): v is string | null => v === null || isChallengeCode(v), null, issues, '')
   return f
 }
 
@@ -698,19 +711,43 @@ export function createStore(backend: StorageBackend) {
     getSettings(): Settings {
       return { ...file().settings }
     },
+    /**
+     * Changes some settings. A nick that fails challenge.cleanName is stored
+     * as '' (no name); otherwise it is stored cleaned.
+     */
     updateSettings(partial: Partial<Settings>): Settings {
       mutate((f) => {
         let changed = false
-        for (const k of Object.keys(DEFAULT_SETTINGS) as Array<keyof Settings>) {
+        for (const k of TOGGLE_KEYS) {
           const v = partial[k]
           if (isBool(v) && f.settings[k] !== v) {
             f.settings[k] = v
             changed = true
           }
         }
+        if (partial.nick !== undefined) {
+          const nick = cleanName(partial.nick) ?? ''
+          if (f.settings.nick !== nick) {
+            f.settings.nick = nick
+            changed = true
+          }
+        }
         return changed
       })
       return store.getSettings()
+    },
+    /** A friend's challenge code kept for after today's daily, or null. */
+    pendingChallenge(): string | null {
+      return file().pendingChallenge
+    },
+    /** Keep a challenge code to play later (null clears it, e.g. once used). Bad codes are ignored. */
+    setPendingChallenge(code: string | null) {
+      if (code !== null && !isChallengeCode(code)) return
+      mutate((f) => {
+        if (f.pendingChallenge === code) return false
+        f.pendingChallenge = code
+        return true
+      })
     },
     // --- coaching -------------------------------------------------------------
     /** Mission state and seen lessons (a copy). */
@@ -785,6 +822,27 @@ export const save: Store = createStore({
 export function configureStorage(next: StorageBackend) {
   backend = next
   save.invalidate()
+}
+
+/** Where builds before the save's settings.nick kept the challenge nickname. */
+export const LEGACY_NICK_KEY = 'hold.nick'
+
+/**
+ * Moves a nickname left under LEGACY_NICK_KEY into settings.nick, once. The
+ * old key is removed only after the save took the name, and a name already
+ * in the save wins. Run at boot, after the store is ready. Never throws.
+ */
+export function migrateLegacyNick(store: Store = save) {
+  try {
+    const raw = localStorage.getItem(LEGACY_NICK_KEY)
+    if (raw === null) return
+    const name = cleanName(raw)
+    if (name && !store.getSettings().nick) store.updateSettings({ nick: name })
+    if (store.lastWriteFailed() || store.readOnly()) return
+    localStorage.removeItem(LEGACY_NICK_KEY)
+  } catch {
+    // No localStorage (node) or blocked: nothing to migrate.
+  }
 }
 
 /**

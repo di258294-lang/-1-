@@ -1,5 +1,5 @@
 import { save } from '../core/storage'
-import type { Settings } from '../core/types'
+import type { ToggleKey } from '../core/types'
 import { setSoundEnabled } from './audio'
 import { h, haptic } from './dom'
 import { logError } from './errors'
@@ -26,13 +26,13 @@ function openLink(path: string) {
   }
 }
 
-const ROWS: Array<{ key: keyof Settings; label: string; sub: string }> = [
+const ROWS: Array<{ key: ToggleKey; label: string; sub: string }> = [
   { key: 'sound', label: '소리', sub: '사고팔 때와 뉴스가 뜰 때 작은 소리가 나요' },
   { key: 'haptics', label: '진동', sub: '사고팔 때 살짝 떨려요' },
   { key: 'tapToggle', label: '탭으로 사고팔기', sub: '한 번 톡 치면 사고, 한 번 더 치면 팔아요. 계속 누르기 힘들 때 써요' },
 ]
 
-function switchRow(key: keyof Settings, label: string, sub: string) {
+function switchRow(key: ToggleKey, label: string, sub: string) {
   let on = save.getSettings()[key]
   const knob = h('span', { class: 'switch', 'aria-hidden': 'true' })
   const btn = h(

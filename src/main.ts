@@ -1,6 +1,6 @@
 import './styles.css'
 import { platform } from '#platform'
-import { BACKUP_KEY, hydrate, SAVE_KEY } from './core/storage'
+import { BACKUP_KEY, hydrate, migrateLegacyNick, SAVE_KEY } from './core/storage'
 import type { Route, Screen } from './ui/app'
 import { openChallenge, takeChallengeParam } from './ui/challenge'
 import { errorScreen, installErrorHandlers, logError } from './ui/errors'
@@ -98,6 +98,7 @@ async function boot() {
       (backup) => void platform.storage.set(BACKUP_KEY, backup),
     )
   }
+  migrateLegacyNick()
   platform.onBack(() => {
     if (!handleBack()) confirmExit()
   })

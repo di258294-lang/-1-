@@ -4,7 +4,9 @@ import { SEASON_START } from './season'
 import {
   createStore,
   hydrate,
+  LEGACY_NICK_KEY,
   memoryBackend,
+  migrateLegacyNick,
   parseSave,
   save,
   SAVE_VERSION,
@@ -67,7 +69,7 @@ describe('migration v1 → v2', () => {
     expect(store.practice()).toEqual({ rounds: 3, traded: 3, best: 0.2 })
     // v1: 3 practice + 2 finished dailies. v2 counts the same for old data.
     expect(store.roundsPlayed()).toBe(5)
-    expect(store.getSettings()).toEqual({ sound: true, haptics: true, tapToggle: false })
+    expect(store.getSettings()).toEqual({ sound: true, haptics: true, tapToggle: false, nick: '' })
 
     const [legacy, full] = store.habitRecords()
     expect(legacy.at).toBe('')
@@ -146,7 +148,7 @@ describe('corrupt and invalid saves', () => {
     expect(store.habitRecords().map((h) => h.id)).toEqual(['a'])
     expect(store.streakState('2026-10-05').frozen).toEqual(['2026-10-03'])
     expect(store.pastSeasons().map((s) => s.season)).toEqual(['2026-09'])
-    expect(store.getSettings()).toEqual({ sound: false, haptics: true, tapToggle: false })
+    expect(store.getSettings()).toEqual({ sound: false, haptics: true, tapToggle: false, nick: '' })
     expect(backups).toHaveLength(1)
   })
 
@@ -365,7 +367,7 @@ describe('habits and settings', () => {
 
   it('update settings partially', () => {
     const { store, writes } = setup()
-    expect(store.updateSettings({ tapToggle: true })).toEqual({ sound: true, haptics: true, tapToggle: true })
+    expect(store.updateSettings({ tapToggle: true })).toEqual({ sound: true, haptics: true, tapToggle: true, nick: '' })
     store.updateSettings({ tapToggle: true })
     expect(writes).toHaveLength(1)
     expect(store.updateSettings({ sound: false }).sound).toBe(false)
@@ -437,5 +439,67 @@ describe('coaching state', () => {
     store.updateCoach(() => null)
     store.markSeasonsSeen([])
     expect(writes).toHaveLength(0)
+  })
+})
+
+describe('nickname and pending challenge', () => {
+  it('keep a clean nickname in the settings', () => {
+    const { store, backend } = setup()
+    expect(store.getSettings().nick).toBe('')
+    expect(store.updateSettings({ nick: '  민수  ' }).nick).toBe('민수')
+    // Not a valid name: stored as no name.
+    expect(store.updateSettings({ nick: '<b>' }).nick).toBe('')
+    store.updateSettings({ nick: '지영' })
+    expect(createStore(memoryBackend(backend.peek())).getSettings().nick).toBe('지영')
+    // A broken stored name is dropped (and the file backed up).
+    const bad = parseSave(JSON.stringify({ v: 2, settings: { nick: 42, sound: false } }))
+    expect(bad.file.settings).toEqual({ sound: false, haptics: true, tapToggle: false, nick: '' })
+    expect(bad.issues).toContain('settings.nick')
+  })
+
+  it('keep a challenge code until it is used', () => {
+    const { store, backend, writes } = setup()
+    expect(store.pendingChallenge()).toBeNull()
+    store.setPendingChallenge('AQIDBAUG_-x')
+    expect(store.pendingChallenge()).toBe('AQIDBAUG_-x')
+    expect(createStore(memoryBackend(backend.peek())).pendingChallenge()).toBe('AQIDBAUG_-x')
+    store.setPendingChallenge('not a code!')
+    expect(store.pendingChallenge()).toBe('AQIDBAUG_-x')
+    store.setPendingChallenge(null)
+    expect(store.pendingChallenge()).toBeNull()
+    store.setPendingChallenge(null)
+    expect(writes).toHaveLength(2)
+    expect(parseSave(JSON.stringify({ v: 2, pendingChallenge: 7 })).file.pendingChallenge).toBeNull()
+  })
+
+  it('moves the old hold.nick key into the save once', () => {
+    const ls = new Map<string, string>([[LEGACY_NICK_KEY, '민수']])
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => ls.get(k) ?? null,
+      setItem: (k: string, v: string) => void ls.set(k, v),
+      removeItem: (k: string) => void ls.delete(k),
+    })
+    try {
+      const { store } = setup()
+      migrateLegacyNick(store)
+      expect(store.getSettings().nick).toBe('민수')
+      expect(ls.has(LEGACY_NICK_KEY)).toBe(false)
+      // A name already in the save wins over a stale old key.
+      ls.set(LEGACY_NICK_KEY, '철수')
+      migrateLegacyNick(store)
+      expect(store.getSettings().nick).toBe('민수')
+      // Storage that can't be written keeps the old key for next time.
+      const blind = createStore({
+        read: () => {
+          throw new Error('blocked')
+        },
+        write: () => {},
+      })
+      ls.set(LEGACY_NICK_KEY, '영희')
+      migrateLegacyNick(blind)
+      expect(ls.get(LEGACY_NICK_KEY)).toBe('영희')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
