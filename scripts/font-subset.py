@@ -8,6 +8,12 @@ ASCII and common punctuation) in a single variable woff2.
     npm run font            # after changing any Korean copy
     npm run font:check      # CI: fails if src uses Hangul the subset lacks
 
+Pretendard is under the SIL Open Font License 1.1 with "Pretendard" as a
+Reserved Font Name. A subset is a Modified Version (OFL FAQ 2.6), so the
+shipped file is renamed to "HOLD Sans" (family, full and PostScript names);
+copyright, trademark and license records stay as they are. The license text
+ships in public/licenses.txt.
+
 Requires: pip install fonttools brotli
 """
 import pathlib
@@ -22,6 +28,13 @@ OUT = ROOT / 'src/assets/pretendard-subset.woff2'
 # Always present, even if no source file happens to use them yet.
 EXTRA = '·…‥←→↑↓–—‘’“”′″%‰₩×÷±≈≠≤≥°•∙■□▲▼△▽●○◆◇★☆※〈〉《》「」『』【】・'
 
+FAMILY = 'HOLD Sans'
+PS_FAMILY = 'HOLDSans'
+# Name IDs that carry the font's own name (family, unique id, full name,
+# PostScript name, typographic family, variations PostScript prefix, and the
+# named-instance PostScript names, which start at 256).
+RENAMED_IDS = {1, 3, 4, 6, 16, 25}
+
 SOURCE_GLOBS = ['src/**/*.ts', 'src/**/*.css', 'index.html']
 
 
@@ -32,6 +45,15 @@ def used_text() -> str:
         for path in ROOT.glob(pattern):
             chars.update(path.read_text(encoding='utf-8'))
     return ''.join(sorted(c for c in chars if c.isprintable()))
+
+
+def rename(font) -> None:
+    for rec in font['name'].names:
+        if rec.nameID in RENAMED_IDS or rec.nameID >= 256:
+            text = rec.toUnicode()
+            renamed = text.replace('PretendardVariable', PS_FAMILY).replace('Pretendard Variable', FAMILY)
+            if renamed != text:
+                rec.string = renamed
 
 
 def build(out: pathlib.Path = OUT) -> pathlib.Path:
@@ -47,6 +69,7 @@ def build(out: pathlib.Path = OUT) -> pathlib.Path:
     sub = subset.Subsetter(opts)
     sub.populate(text=used_text())
     sub.subset(font)
+    rename(font)
     out.parent.mkdir(parents=True, exist_ok=True)
     subset.save_font(font, str(out), opts)
     return out

@@ -242,6 +242,7 @@ export function resultScreen(
       h('button', { class: 'btn btn-quiet', onclick: again }, mode.kind === 'daily' ? '연습 한 판' : '한 판 더'),
       h('button', { class: 'btn btn-primary', onclick: share }, '공유하기'),
     ),
+    h('p', { class: 'fine disclaimer' }, '가상 시장에서 나온 게임 결과예요. 실제 투자 성과나 투자 조언이 아니에요.'),
   )
 
   return {

@@ -89,7 +89,7 @@ export function habitsScreen(go: Navigate): Screen {
       h('p', { class: 'result-title' }, `최근 ${profile.rounds}판으로 본 내 성향`),
       h('h1', { class: 'type-name' }, type.name),
       h('p', { class: 'type-line' }, type.line),
-      h('div', { class: 'tip' }, h('span', null, '다음 판에서 해볼 것'), h('b', null, type.tip)),
+      h('div', { class: 'tip' }, h('span', null, '다음 판 미션'), h('b', null, type.tip)),
       bars,
       h(
         'p',

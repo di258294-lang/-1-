@@ -466,7 +466,7 @@ export class Chart {
       ctx.fill()
 
       const label = formatPrice(hp)
-      ctx.font = '600 12px "Pretendard Variable", Pretendard, system-ui, sans-serif'
+      ctx.font = '600 12px "HOLD Sans", system-ui, sans-serif'
       const tw = ctx.measureText(label).width
       const bw = tw + 14
       const bh = 22

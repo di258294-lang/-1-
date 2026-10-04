@@ -38,7 +38,7 @@ export function shareText(opts: {
   const { market, result, day, url } = opts
   const name = PRODUCTS[market.product].name
   const mode = market.length === 'long' ? '장기 1년' : '연습'
-  const head = day === null ? `HOLD ${mode} · ${name}` : `HOLD #${day} · ${name}`
+  const head = day === null ? `HOLD ${mode} · ${name} (가상 게임)` : `HOLD #${day} · ${name} (가상 게임)`
   return [
     `${head}  ${formatPct(result.yourReturn, 1)}`,
     `그냥 들고 있었으면 ${formatPct(result.buyHoldReturn, 1)}`,
@@ -55,7 +55,7 @@ export function meter(score: number, cells = 5) {
 
 export function profileShareText(profile: Profile, url: string) {
   return [
-    'HOLD 매매 습관 진단',
+    'HOLD 매매 습관 진단 (게임)',
     `나는 ${TYPES[profile.type].name}`,
     ...HABIT_KEYS.map((k) => `${meter(profile.scores[k])} ${HABIT_LABELS[k]}`),
     url,

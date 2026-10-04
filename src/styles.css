@@ -1,7 +1,8 @@
-/* Pretendard, subset to the glyphs the game uses (npm run font). One file,
-   ~120 KB, instead of 92 unicode-range slices or the 3 MB full font. */
+/* Pretendard (SIL OFL 1.1, public/licenses.txt), subset to the glyphs the
+   game uses and renamed HOLD Sans as the OFL asks of modified versions
+   (npm run font). One ~120 KB file instead of 92 slices or the 3 MB font. */
 @font-face {
-  font-family: 'Pretendard Variable';
+  font-family: 'HOLD Sans';
   font-style: normal;
   font-weight: 45 920;
   font-display: swap;
@@ -92,7 +93,7 @@ body {
   height: 100%;
   background: var(--canvas);
   color: var(--ink);
-  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: 'HOLD Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-size: 16px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
@@ -668,6 +669,12 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.disclaimer {
+  margin-top: 12px;
+  font-size: 12px;
+  text-align: center;
 }
 
 /* ---------- sheet ---------- */
