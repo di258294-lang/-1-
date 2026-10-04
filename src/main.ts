@@ -10,6 +10,7 @@ import { habitsScreen } from './ui/habits'
 import { homeScreen } from './ui/home'
 import { playScreen } from './ui/play'
 import { recordsScreen } from './ui/records'
+import { initReach } from './ui/reach'
 import { resultScreen } from './ui/result'
 import { anySheetOpen, closeAllSheets, closeTopSheet, confirmSheet } from './ui/sheet'
 
@@ -141,6 +142,7 @@ async function boot() {
     storageReady = true
   }
   migrateLegacyNick()
+  initReach()
   platform.onBack(() => {
     if (!handleBack()) confirmExit()
   })

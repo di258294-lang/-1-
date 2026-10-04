@@ -1,3 +1,4 @@
+import { leaderboardRow } from './leaderboard'
 import { dailySeed, dateKey, EPOCH_KEY } from '../core/daily'
 import { direction, formatPct, formatWon } from '../core/format'
 import {
@@ -316,6 +317,7 @@ export function recordsScreen(go: Navigate): Screen {
     listRow('내 매매 습관', null, '', () => go({ name: 'habits' })),
     // Long mode lives here, off the home screen (ux2 P1-9).
     listRow('장기 모드', '1년치 시장을 5분에', '5분', () => withIntro(go, () => showProductSheet(go, 'long'), 'rules')),
+    leaderboardRow(),
   )
 
   return {

@@ -1,3 +1,4 @@
+import { leaderboardButton } from './leaderboard'
 import { bridgeLine, gradeLineShown } from '../core/copy'
 import { dailySeed, nextKey } from '../core/daily'
 import { direction, formatPct, formatWon } from '../core/format'
@@ -545,6 +546,7 @@ export function resultScreen(
     details,
     actions,
     challengeButton(market, result, mode),
+    daily ? leaderboardButton() : null,
     card
       ? h('button', { class: 'btn btn-text', onclick: async () => void shareCard(await card, `hold-${market.seed}.png`) }, '이미지로 공유')
       : null,

@@ -5,6 +5,7 @@ import { calendarLabel, dayOf, playPrice, TICKS_PER_SECOND, type Market } from '
 import { PRODUCTS } from '../core/products'
 import { platform } from '#platform'
 import { completeRound, roundKind } from '../core/session'
+import { onDailyRecorded } from './reach'
 import { save } from '../core/storage'
 import { advanceTo, createRound, isOver, setHolding, START_EQUITY, summarize } from '../core/round'
 import { Coach, NEWS_SHOW_AFTER } from '../core/tutorial'
@@ -246,7 +247,9 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
     try {
       // Every kind goes through completeRound; its policy keeps tutorial,
       // challenge and replay rounds out of the records.
-      route = { name: 'result', mode, market, ...completeRound(mode, market, round, { kind }) }
+      const outcome = completeRound(mode, market, round, { kind })
+      if (mode.kind === 'daily') onDailyRecorded(mode.key, outcome.result)
+      route = { name: 'result', mode, market, ...outcome }
     } catch (err) {
       // Saving failed. The player still sees how the round went.
       logError(err, 'completeRound')
