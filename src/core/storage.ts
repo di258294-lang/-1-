@@ -478,7 +478,7 @@ export type StorageBackend = {
   writeLive?(s: string | null): void | Promise<unknown>
 }
 
-export function localStorageBackend(key = SAVE_KEY, backupKey = BACKUP_KEY, liveKey = LIVE_KEY): StorageBackend {
+function localStorageBackend(key = SAVE_KEY, backupKey = BACKUP_KEY, liveKey = LIVE_KEY): StorageBackend {
   return {
     read: () => localStorage.getItem(key),
     write: (s) => localStorage.setItem(key, s),

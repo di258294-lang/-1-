@@ -15,7 +15,7 @@ import type { HapticKind, Platform } from './types'
 const native = Capacitor.isNativePlatform()
 
 /** Where shared links point. The apps have no public origin of their own. */
-export const SHARE_URL = import.meta.env.VITE_SHARE_URL || 'https://di258294-lang.github.io/-1-/'
+const SHARE_URL = import.meta.env.VITE_SHARE_URL || 'https://di258294-lang.github.io/-1-/'
 
 const VIBRATE_MS: Record<HapticKind, number> = { press: 10, release: 6, tick: 4 }
 const IMPACT: Record<HapticKind, ImpactStyle> = {
