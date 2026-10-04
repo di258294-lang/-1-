@@ -23,6 +23,8 @@ export type WeeklyRule = {
   detail: string
   /** Whether checking it needs the redrawn chart. */
   needsMarket: boolean
+  /** Days to pass, when not WEEKLY_GOAL (noRumor only counts days with a rumor, about 4 a week). */
+  goal?: number
 }
 
 /**
@@ -48,6 +50,7 @@ export const WEEKLY_RULES: readonly WeeklyRule[] = [
     title: '소문엔 반응 없이, 그냥 들고 있는 것보다 더 벌기',
     detail: `소문이 뜨면 가격이 움직일 때까지 사지도 팔지도 않고, 그냥 들고 있는 것보다 더 벌면 돼요. ${BENCH_NOTE} 소문이 없던 날은 세지 않아요.`,
     needsMarket: true,
+    goal: 2,
   },
   {
     key: 'halfCash',
@@ -235,7 +238,8 @@ export function weeklyProgress(
     return { key, mark }
   })
   const passed = days.filter((d) => d.mark === 'pass').length
-  return { start: days[0].key, rule, days, passed, goal: WEEKLY_GOAL, done: passed >= WEEKLY_GOAL }
+  const goal = rule.goal ?? WEEKLY_GOAL
+  return { start: days[0].key, rule, days, passed, goal, done: passed >= goal }
 }
 
 /**

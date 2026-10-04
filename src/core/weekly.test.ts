@@ -209,14 +209,17 @@ describe('weeklyProgress', () => {
     expect(p.start).toBe('2026-10-05')
     expect(p.days.map((d) => d.mark)).toEqual(['pass', 'fail', 'none', 'today', 'future', 'future', 'future'])
     expect(p.passed).toBe(1)
-    expect(p.goal).toBe(WEEKLY_GOAL)
+    // noRumor counts only days with a rumor (about 4 a week), so it needs 2.
+    expect(p.goal).toBe(2)
     expect(p.done).toBe(false)
 
     saved['2026-10-06'] = day({ key: '2026-10-06' })
-    saved['2026-10-08'] = day({ key: '2026-10-08' })
     const done = weeklyProgress(today, (k) => saved[k], () => m)
-    expect(done.passed).toBe(3)
+    expect(done.passed).toBe(2)
     expect(done.done).toBe(true)
+
+    // Other rules keep the usual goal.
+    expect(weeklyProgress(today, (k) => saved[k], () => m, '2026-10-12').goal).toBe(WEEKLY_GOAL)
 
     // No rumor on the chart: the day is marked as not counted.
     const quiet = weeklyProgress(today, (k) => saved[k], () => flat)

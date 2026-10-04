@@ -591,9 +591,9 @@ export type Profile = {
   /** Mean share of the round held, over rounds that recorded it (missing on old profiles). */
   held?: number
   /**
-   * What flagged the holder habit: 'rates' when the pooled disposition test
-   * (selling winners faster than losers) is the stronger evidence, 'depth'
-   * when losers fell far deeper than random holds. Picks the holder mission.
+   * What flagged the holder habit: 'rates' when only the pooled disposition
+   * test (selling winners faster than losers) did, 'depth' when losers also
+   * (or only) fell far deeper than random holds. Picks the holder mission.
    */
   holderBasis?: 'rates' | 'depth'
 }
@@ -722,7 +722,10 @@ export function profileFrom(records: HabitRecord[]): Profile | null {
   }
   const profile: Profile = { type, scores, rounds: recent.length }
   if (held !== undefined) profile.held = held
-  if (holder > 0) profile.holderBasis = dispScore >= depthScore ? 'rates' : 'depth'
+  // 'rates' only when the selling-rate test alone carries the flag: a player
+  // whose losers also ran deep gets the stop-loss mission, which (judged by
+  // reaction time) separates a changed player from an unchanged one best.
+  if (holder > 0) profile.holderBasis = dispScore > depthScore && depthScore < TYPE_MIN ? 'rates' : 'depth'
   return profile
 }
 
