@@ -1,5 +1,5 @@
 import { previousKey } from './daily'
-import type { HabitScores } from './habits'
+import { HABIT_KEYS, type HabitRecord, type HabitScores } from './habits'
 import { PRODUCT_ORDER, PRODUCTS, type ProductKey } from './products'
 import { accountAfter, accountBefore } from './season'
 
@@ -19,11 +19,32 @@ type SaveFile = {
   daily: Record<string, SavedDaily>
   practice: { rounds: number; best: number | null }
   seenIntro: boolean
-  /** Habit scores of recent rounds that had at least one trade, oldest first. */
-  habits: Array<{ id: string; scores: HabitScores }>
+  /**
+   * Analyzed rounds that had at least one trade, oldest first. Saves from
+   * before records existed hold only { id, scores }; see asRecord().
+   */
+  habits: Array<HabitRecord | { id: string; scores: HabitScores }>
 }
 
 const HABIT_HISTORY = 30
+
+/** Fills defaults for habit entries saved before full records existed. */
+function asRecord(h: HabitRecord | { id: string; scores: HabitScores }): HabitRecord {
+  if ('measurable' in h) return h
+  const all = Object.fromEntries(HABIT_KEYS.map((k) => [k, true])) as HabitRecord['measurable']
+  return {
+    id: h.id,
+    at: '',
+    product: 'stock',
+    length: 'short',
+    trades: 1,
+    heldRatio: 0,
+    scores: h.scores,
+    measurable: all,
+    counts: { sellUp: 0, expUp: 0, sellDown: 0, expDown: 0 },
+    luckPct: null,
+  }
+}
 
 const KEY = 'hold.save.v1'
 
@@ -94,15 +115,34 @@ export const save = {
     }
     return n
   },
-  recordHabits(id: string, scores: HabitScores) {
+  recordHabit(record: HabitRecord) {
     const f = file()
-    if (f.habits.some((h) => h.id === id)) return
-    f.habits.push({ id, scores })
+    if (f.habits.some((h) => h.id === record.id)) return
+    f.habits.push(record)
     f.habits = f.habits.slice(-HABIT_HISTORY)
     persist(f)
   },
-  habitHistory(): HabitScores[] {
-    return file().habits.map((h) => h.scores)
+  habitRecords(): HabitRecord[] {
+    return file().habits.map(asRecord)
+  },
+  /** Attach the luck-test percentile once the result screen has computed it. */
+  setLuck(id: string, percentile: number) {
+    const f = file()
+    const i = f.habits.findIndex((h) => h.id === id)
+    if (i < 0) return
+    f.habits[i] = { ...asRecord(f.habits[i]), luckPct: percentile }
+    persist(f)
+  },
+  /**
+   * Checkpoint a live daily round, so quitting by reload or app kill keeps
+   * the result so far instead of 0%. Only touches unfinished entries.
+   */
+  progressDaily(key: string, progress: { yourReturn: number; held: boolean[] }) {
+    const f = file()
+    const entry = f.daily[key]
+    if (!entry?.abandoned) return
+    f.daily[key] = { ...entry, yourReturn: progress.yourReturn, held: progress.held }
+    persist(f)
   },
   accountBefore(key: string) {
     return accountBefore(file().daily, key)

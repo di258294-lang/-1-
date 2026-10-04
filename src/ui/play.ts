@@ -1,9 +1,9 @@
 import { formatPct, formatWon, formatWonDelta, direction } from '../core/format'
 import { calendarLabel, dayOf, LENGTHS, playPrice, TICKS_PER_SECOND, type Market } from '../core/market'
 import { PRODUCTS } from '../core/products'
+import { completeRound } from '../core/session'
 import { save } from '../core/storage'
-import { analyzeRound } from '../core/habits'
-import { advanceTo, createRound, isOver, setHolding, START_EQUITY, summarize } from '../core/round'
+import { advanceTo, createRound, isOver, setHolding, START_EQUITY } from '../core/round'
 import type { Mode, Navigate, Screen } from './app'
 import { Chart } from './chart'
 import { h, haptic, icons, svg } from './dom'
@@ -19,7 +19,6 @@ const clockText = (secs: number) => `${Math.floor(secs / 60)}:${String(secs % 60
 export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   // Daily rounds trade the season account; practice always starts fresh.
   const product = PRODUCTS[market.product]
-  const unlockedBefore = save.unlockedProducts()
   const round = createRound(market, mode.kind === 'daily' ? save.accountBefore(mode.key) : START_EQUITY)
 
   const isLong = market.length === 'long'
@@ -200,27 +199,8 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   const finish = () => {
     if (phase === 'done') return
     phase = 'done'
-    if (round.holding) setHolding(round, false)
-    advanceTo(round, playTicks)
-    const result = summarize(round)
-    if (mode.kind === 'daily') {
-      save.recordDaily(mode.key, {
-        yourReturn: result.yourReturn,
-        buyHoldReturn: result.buyHoldReturn,
-        held: result.held,
-        trades: result.trades,
-        title: result.grade.title,
-        product: market.product,
-      })
-    } else {
-      save.recordPractice(result.yourReturn)
-    }
-    const habits = analyzeRound(market, result.held, result.fees)
-    if (habits.trades > 0) {
-      save.recordHabits(mode.kind === 'daily' ? `d:${mode.key}` : `p:${Date.now()}`, habits.scores)
-    }
-    const unlocked = save.unlockedProducts().filter((k) => !unlockedBefore.includes(k))
-    go({ name: 'result', mode, market, result, unlocked })
+    const outcome = completeRound(mode, market, round)
+    go({ name: 'result', mode, market, ...outcome })
   }
 
   const frame = (now: number) => {

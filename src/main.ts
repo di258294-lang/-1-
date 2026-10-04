@@ -19,7 +19,7 @@ function go(route: Route) {
       current = playScreen(go, route.mode, route.market)
       break
     case 'result':
-      current = resultScreen(go, route.mode, route.market, route.result, route.unlocked ?? [])
+      current = resultScreen(go, route.mode, route.market, route.result, route.unlocked ?? [], route.habits, route.record ?? null)
       break
     case 'habits':
       current = habitsScreen(go)

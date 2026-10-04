@@ -9,10 +9,11 @@ const BINS = 28
  * Skill or luck: where this round sits among random traders with the same
  * style on the same chart, drawn as a histogram with the player marked.
  */
-export function luckCard(market: Market, held: boolean[]) {
+export function luckCard(market: Market, held: boolean[], onResult?: (percentile: number) => void) {
   // Long rounds are 7.5x the ticks; fewer replays keep the screen instant.
   const result = luckTest(market, held, market.length === 'long' ? 400 : 1000)
   if (!result) return null
+  onResult?.(result.percentile)
   const verdict = luckVerdict(result)
   const xs = result.nullReturns
   // Trim the extreme 1% on each side so one wild replay doesn't flatten the chart.

@@ -45,7 +45,7 @@ export function homeScreen(go: Navigate): Screen {
   const tomorrow = nextKey(key)
   const tomorrowProduct = PRODUCTS[dailyProduct(tomorrow)]
   const streak = save.streak(key)
-  const history = save.habitHistory()
+  const history = save.habitRecords()
   const profile = profileFrom(history)
 
   const top = h(

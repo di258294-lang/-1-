@@ -23,7 +23,7 @@ const MEASURES: Record<HabitKey, string> = {
 }
 
 export function habitsScreen(go: Navigate): Screen {
-  const history = save.habitHistory()
+  const history = save.habitRecords()
   const profile = profileFrom(history)
 
   const practice = () => showProductSheet(go)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeRound, profileFrom, roundInsight, tradesFrom, type HabitScores } from './habits'
+import { analyzeRound, profileFrom, roundInsight, tradesFrom, type HabitRecord, type HabitScores } from './habits'
 import { COMPANIES, type Market, type NewsEvent } from './market'
 
 const PLAY_TICKS = 400
@@ -103,19 +103,36 @@ describe('analyzeRound', () => {
   })
 })
 
+/** A stored round with the given scores and otherwise neutral fields. */
+export function recordOf(scores: HabitScores, extra: Partial<HabitRecord> = {}): HabitRecord {
+  return {
+    id: `p:${Math.random()}`,
+    at: '2026-10-01',
+    product: 'stock',
+    length: 'short',
+    trades: 3,
+    heldRatio: 0.5,
+    scores,
+    measurable: { holder: true, chicken: true, scalper: true, chaser: true, rumor: true },
+    counts: { sellUp: 0, expUp: 0, sellDown: 0, expDown: 0 },
+    luckPct: null,
+    ...extra,
+  }
+}
+
 describe('profileFrom', () => {
   const zero: HabitScores = { holder: 0, chicken: 0, scalper: 0, chaser: 0, rumor: 0 }
 
   it('needs five rounds', () => {
-    expect(profileFrom([zero, zero, zero, zero])).toBeNull()
-    expect(profileFrom([zero, zero, zero, zero, zero])?.type).toBe('machine')
+    expect(profileFrom([zero, zero, zero, zero].map((s) => recordOf(s)))).toBeNull()
+    expect(profileFrom([zero, zero, zero, zero, zero].map((s) => recordOf(s)))?.type).toBe('machine')
   })
 
   it('picks the strongest habit over the recent window', () => {
     const scalpy = { ...zero, scalper: 0.9 }
     const holdy = { ...zero, holder: 0.8 }
     // Old scalping rounds fall out of the 10-round window.
-    const history = [...Array(10).fill(scalpy), ...Array(10).fill(holdy)]
+    const history = [...Array(10).fill(scalpy), ...Array(10).fill(holdy)].map((s) => recordOf(s))
     expect(profileFrom(history)?.type).toBe('holder')
   })
 })

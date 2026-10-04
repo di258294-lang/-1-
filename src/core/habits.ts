@@ -1,4 +1,5 @@
-import { playPrice, TICKS_PER_SECOND, type Market } from './market'
+import { playPrice, TICKS_PER_SECOND, type Market, type RoundLength } from './market'
+import type { ProductKey } from './products'
 
 /**
  * Trading habits from behavioral finance, measured from one round's
@@ -90,9 +91,15 @@ export function tradesFrom(market: Market, held: boolean[]): Trade[] {
   return trades
 }
 
+/** Raw sell/exposure tick counts behind the disposition measure, for pooling. */
+export type HabitCounts = { sellUp: number; expUp: number; sellDown: number; expDown: number }
+
 export type RoundHabits = {
   trades: number
   scores: HabitScores
+  /** Whether each habit could be measured at all this round (e.g. no losses = no holder score). */
+  measurable: Record<HabitKey, boolean>
+  counts: HabitCounts
   facts: {
     lossTrades: number
     winTrades: number
@@ -239,6 +246,14 @@ export function analyzeRound(market: Market, held: boolean[], fees: number): Rou
   return {
     trades: trades.length,
     scores: { holder, chicken, scalper, chaser, rumor },
+    measurable: {
+      holder: losses.length > 0,
+      chicken: earlyExits.length > 0,
+      scalper: trades.length > 0,
+      chaser: trades.length > 0,
+      rumor: rumors > 0,
+    },
+    counts: { sellUp: sellGain, expUp: expGain, sellDown: sellLoss, expDown: expLoss },
     facts: {
       lossTrades: losses.length,
       winTrades: wins.length,
@@ -350,11 +365,31 @@ export function roundInsight(h: RoundHabits): Insight {
   return { tone: 'good', title: '눈에 띄는 나쁜 습관이 없었어요', line: '이번 판은 깔끔하게 매매했어요.' }
 }
 
+/**
+ * One analyzed round as stored in the save file. Everything the profile,
+ * missions and records screens need is here, so they never re-simulate.
+ */
+export type HabitRecord = {
+  /** 'd:<dateKey>' for daily rounds, 'p:<timestamp>' for practice. */
+  id: string
+  /** KST date key the round was played on ('' for records migrated from v1). */
+  at: string
+  product: ProductKey
+  length: RoundLength
+  trades: number
+  heldRatio: number
+  scores: HabitScores
+  measurable: Record<HabitKey, boolean>
+  counts: HabitCounts
+  /** Luck-test percentile (0..1), filled in after the result screen computes it. */
+  luckPct: number | null
+}
+
 export type Profile = { type: TypeKey; scores: HabitScores; rounds: number }
 
 /** Average the recent rounds that had trades and pick the strongest habit. */
-export function profileFrom(history: HabitScores[]): Profile | null {
-  const recent = history.slice(-PROFILE_WINDOW)
+export function profileFrom(records: HabitRecord[]): Profile | null {
+  const recent = records.slice(-PROFILE_WINDOW).map((r) => r.scores)
   if (recent.length < PROFILE_MIN_ROUNDS) return null
   const scores = Object.fromEntries(
     HABIT_KEYS.map((k) => [k, mean(recent.map((s) => s[k]))]),

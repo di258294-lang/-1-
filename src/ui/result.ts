@@ -1,5 +1,5 @@
 import { direction, formatPct, formatWon } from '../core/format'
-import { analyzeRound, PROFILE_MIN_ROUNDS, profileFrom, roundInsight, TYPES } from '../core/habits'
+import { analyzeRound, PROFILE_MIN_ROUNDS, profileFrom, roundInsight, TYPES, type HabitRecord, type RoundHabits } from '../core/habits'
 import { seasonLabel } from '../core/season'
 import { save } from '../core/storage'
 import { calendarLabel, dayOf, playPrice, TICKS_PER_SECOND, type Market } from '../core/market'
@@ -43,6 +43,8 @@ export function resultScreen(
   market: Market,
   result: RoundResult,
   unlocked: ProductKey[],
+  roundHabits?: RoundHabits,
+  record: HabitRecord | null = null,
 ): Screen {
   const product = PRODUCTS[market.product]
   const lesson = productLesson(market)
@@ -79,8 +81,8 @@ export function resultScreen(
   const heldPct = Math.round(result.heldRatio * 100)
 
   // The habit this round revealed, and where it leaves the player's type.
-  const insight = roundInsight(analyzeRound(market, result.held, result.fees))
-  const history = save.habitHistory()
+  const insight = roundInsight(roundHabits ?? analyzeRound(market, result.held, result.fees))
+  const history = save.habitRecords()
   const profile = profileFrom(history)
   const foot = h(
     'button',
@@ -165,7 +167,7 @@ export function resultScreen(
       // deposit rate is the benchmark investors actually use.
       isLong ? row('예금에만 넣었다면', result.cashReturn) : row('1초 단위로 완벽했다면', result.perfectReturn),
     ),
-    luckCard(market, result.held),
+    luckCard(market, result.held, (pct) => record && save.setLuck(record.id, pct)),
     h(
       'p',
       { class: 'fine num' },
