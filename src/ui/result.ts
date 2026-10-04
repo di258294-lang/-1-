@@ -23,7 +23,9 @@ import { luckCard, luckPlaceholder, luckSkipLine, luckTestApplies, runLuckTest }
 import { missionCard } from './missions'
 import { isTutorial, startTutorial } from './tutorial'
 import { challengeButton, challengeCompare, challengeLuck, challengeOf, pendingChallengeCard, shareRound } from './challenge'
+import { imageShareAvailable, renderResultCard, shareCard } from './card'
 import { showProductSheet, startPractice } from './products'
+import { shareUrl } from './share'
 import { productOf } from './week'
 
 /** Long rounds have many headlines: show the five that moved the price most. */
@@ -329,6 +331,23 @@ export function resultScreen(
   const insight = roundHabits ? roundInsight(roundHabits) : null
   const history = save.habitRecords()
   const profile = profileFrom(history)
+  // The image card is drawn up front so a tap keeps the user gesture that
+  // iOS needs for navigator.share. Web only: native shells can't take files yet.
+  const card =
+    mode.kind === 'daily' && imageShareAvailable()
+      ? shareUrl().then((url) =>
+          renderResultCard({
+            format: 'story',
+            market,
+            result,
+            day: mode.day,
+            url: url.replace(/^https?:\/\//, ''),
+            streak: save.streak(mode.key),
+            typeName: profile ? TYPES[profile.type].name : null,
+          }),
+        )
+      : null
+  card?.catch((err) => logError(err, 'result card'))
   const foot = h(
     'button',
     { class: 'habit-foot', onclick: () => go({ name: 'habits' }) },
@@ -524,6 +543,9 @@ export function resultScreen(
     details,
     actions,
     challengeButton(market, result, mode),
+    card
+      ? h('button', { class: 'btn btn-text', onclick: async () => void shareCard(await card, `hold-${market.seed}.png`) }, '이미지로 공유')
+      : null,
     storageWarning(),
     h('p', { class: 'fine disclaimer' }, '가상 시장에서 나온 게임 결과예요. 실제 투자 성과나 투자 조언이 아니에요.'),
   )

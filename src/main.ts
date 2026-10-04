@@ -1,4 +1,5 @@
 import './styles.css'
+import { clearAnnouncements } from './ui/announce'
 import { platform } from '#platform'
 import { takeChallengeCode } from './core/challenge'
 import { blindBackend, configureStorage, hydrateAsync, migrateLegacyNick } from './core/storage'
@@ -50,6 +51,8 @@ function go(route: Route) {
   }
   current = null
   root.replaceChildren()
+  // A finished screen's last announcement must not be read out on the next one.
+  clearAnnouncements()
   try {
     current = build(route)
     currentRoute = route.name

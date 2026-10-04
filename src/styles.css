@@ -1853,3 +1853,31 @@ button.cal-cell:active {
 .challenge-card h1.habit-title {
   font-size: 22px;
 }
+
+/* Short screens (small phones, 125% zoom): the play screen must keep the
+   whole pad on screen. Shrink the account, the pad and the chart floor. */
+@media (max-height: 600px) {
+  .play {
+    padding-top: calc(var(--safe-top) + 6px);
+  }
+  .equity {
+    font-size: 26px;
+  }
+  .play-note {
+    display: none;
+  }
+  .chart-wrap {
+    min-height: 110px;
+  }
+  .pad {
+    height: 128px;
+    margin-top: 8px;
+  }
+  .news {
+    min-height: 50px;
+    padding: 6px 12px;
+  }
+  .news.with-coach {
+    min-height: 64px;
+  }
+}
