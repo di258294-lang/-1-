@@ -12,7 +12,8 @@
 :root {
   --ink: #111418;
   --ink-2: #4e5561;
-  --ink-3: #8a919c;
+  /* 4.8:1 on --canvas, 4.5:1 on --well (ux2 P1-12) */
+  --ink-3: #646b76;
   --ink-4: #b5bac2;
   --canvas: #f2f3f5;
   --surface: #ffffff;
@@ -44,7 +45,7 @@
   :root:not([data-theme="light"]) {
     --ink: #eef0f3;
     --ink-2: #aab0ba;
-    --ink-3: #737a86;
+    --ink-3: #878e9a;
     --ink-4: #4a505a;
     --canvas: #0c0e11;
     --surface: #16191e;
@@ -65,7 +66,7 @@
 :root[data-theme="dark"] {
   --ink: #eef0f3;
   --ink-2: #aab0ba;
-  --ink-3: #737a86;
+  --ink-3: #878e9a;
   --ink-4: #4a505a;
   --canvas: #0c0e11;
   --surface: #16191e;
@@ -466,7 +467,7 @@ button {
 }
 
 .news-tag {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   opacity: 0.6;
 }
@@ -676,7 +677,7 @@ button {
 
 .disclaimer {
   margin-top: 12px;
-  font-size: 12px;
+  font-size: 13px;
   text-align: center;
 }
 
@@ -766,7 +767,7 @@ button {
 }
 
 .habit-kicker {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--ink-3);
 }
 
@@ -783,6 +784,7 @@ button {
 }
 
 .habit-foot {
+  min-height: 44px;
   margin-top: 10px;
   padding-top: 12px;
   box-shadow: inset 0 1px var(--grid);
@@ -862,7 +864,7 @@ button {
   background: var(--surface);
   display: grid;
   gap: 2px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--ink-3);
 }
 
@@ -1115,7 +1117,7 @@ button {
   margin-top: 6px;
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ink-3);
 }
 
@@ -1125,7 +1127,7 @@ button {
 }
 
 .luck-note {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ink-3);
 }
 
@@ -1174,6 +1176,7 @@ button {
 /* ---------- growth: week strip, season recap, records ---------- */
 
 .wk-strip {
+  min-height: 44px;
   margin-top: 10px;
   width: 100%;
   display: flex;
@@ -1196,8 +1199,8 @@ button {
 }
 
 .wk-day {
-  font-size: 11px;
-  line-height: 13px;
+  font-size: 13px;
+  line-height: 16px;
   color: var(--ink-3);
 }
 
@@ -1207,7 +1210,7 @@ button {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1;
   color: var(--ink-3);
@@ -1235,6 +1238,8 @@ button {
 .wk-before .wk-dot {
   background: none;
   color: var(--ink-4);
+  /* Decoration only: the dot has no letter, so it needs an outline to exist. */
+  box-shadow: inset 0 0 0 1.5px var(--ink-4);
 }
 
 .wk-now .wk-day {
@@ -1285,7 +1290,7 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 14px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ink-3);
 }
 
@@ -1320,7 +1325,7 @@ button {
    the chart may shrink to nothing rather than spill over the rows below. */
 @media (max-height: 700px) {
   .home .home-date,
-  .home .home-lede { display: none; }
+  .home:not(.home-first) .home-lede { display: none; }
   .home .wk-strip { margin-top: 0; }
   .home .teaser { overflow: hidden; padding-top: 14px; padding-bottom: 10px; }
   .home .teaser canvas { min-height: 0; }
@@ -1413,7 +1418,7 @@ button {
 
 .cal-head span {
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ink-3);
 }
 
@@ -1601,7 +1606,7 @@ button.cal-cell:active {
 }
 
 .news-tone {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -1634,7 +1639,7 @@ button.cal-cell:active {
 
 .play-note {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
   color: var(--ink-3);
 }
@@ -1766,4 +1771,113 @@ button.cal-cell:active {
 
 .challenge-send {
   margin-top: 4px;
+}
+
+/* ---------- team C: clarity, retention, viral ---------- */
+
+/* Played home: the edge over holding in words is the hero (ux2 P1-1). */
+.played-edge {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.played-share {
+  margin-top: 16px;
+  width: 100%;
+}
+
+/* The squares' key (ux2 P1-9). */
+.sq-legend {
+  margin-top: 8px;
+}
+
+.sq-key {
+  display: inline-block;
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--well);
+}
+
+.sq-key.u { background: var(--up); }
+.sq-key.d { background: var(--down); }
+
+.home-handoff {
+  margin: 4px 0 2px;
+  font-size: 14px;
+  color: var(--ink-2);
+  text-align: center;
+}
+
+/* Result: the grade under a friend's head-to-head. */
+.result-head-sub {
+  margin-top: 14px;
+}
+
+.result-head-sub .result-line {
+  margin-top: 2px;
+}
+
+.tomorrow-hook span {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.challenge-pending {
+  margin-top: 16px;
+}
+
+.storage-warn {
+  text-align: center;
+  color: var(--ink-2);
+}
+
+/* Short phones: keep the chart above the fold on the result screen (ux2 P1-8). */
+@media (max-height: 700px) {
+  .result-screen .result-chart { height: 160px; }
+  .result-screen .result-title { margin-top: 8px; }
+  .result-screen .result-grade { font-size: 24px; }
+}
+
+/* 125% zoom (288 px): nothing may spill sideways (ux2 P2-9). */
+@media (max-width: 320px) {
+  .wk { gap: 2px; }
+  .wk-cell { width: 24px; }
+  .sq-legend { gap: 2px 10px; }
+}
+
+/* A friend's challenge: its head-to-head is the headline. */
+.challenge-card h1.habit-title {
+  font-size: 22px;
+}
+
+/* Short screens (small phones, 125% zoom): the play screen must keep the
+   whole pad on screen. Shrink the account, the pad and the chart floor. */
+@media (max-height: 600px) {
+  .play {
+    padding-top: calc(var(--safe-top) + 6px);
+  }
+  .equity {
+    font-size: 26px;
+  }
+  .play-note {
+    display: none;
+  }
+  .chart-wrap {
+    min-height: 110px;
+  }
+  .pad {
+    height: 128px;
+    margin-top: 8px;
+  }
+  .news {
+    min-height: 50px;
+    padding: 6px 12px;
+  }
+  .news.with-coach {
+    min-height: 64px;
+  }
 }

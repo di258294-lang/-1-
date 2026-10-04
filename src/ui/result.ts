@@ -1,26 +1,32 @@
+import { bridgeLine, gradeLineShown } from '../core/copy'
+import { dailySeed, nextKey } from '../core/daily'
 import { direction, formatPct, formatWon } from '../core/format'
 import { PROFILE_MIN_ROUNDS, profileFrom, roundInsight, TYPES, type HabitRecord, type RoundHabits } from '../core/habits'
 import { seasonLabel } from '../core/season'
 import { save } from '../core/storage'
-import { calendarLabel, dayOf, playPrice, TICKS_PER_SECOND, type Market } from '../core/market'
+import { calendarLabel, dayOf, generateMarket, playPrice, TICKS_PER_SECOND, type Market } from '../core/market'
 import { luckLesson, productLesson } from '../core/lessons'
-import type { LuckResult } from '../core/luck'
-import { PRODUCTS, type ProductKey } from '../core/products'
+import { MISSIONS, type MissionOutcome } from '../core/missions'
+import { dailyProduct, PRODUCTS, type ProductKey } from '../core/products'
 import type { RoundResult } from '../core/round'
 import { newsKindLabel, newsToneLabel } from '../core/copy'
 import { coachingFor } from '../core/session'
-import { luckRank, shareText } from '../core/share'
+import { weeklyProgress, type WeeklyDay } from '../core/weekly'
+import { announce, clearAnnouncements } from './announce'
 import type { Mode, Navigate, Screen } from './app'
 import { Chart } from './chart'
-import { h, icons, svg } from './dom'
+import { h, icons, storageWarning, svg } from './dom'
 import { logError } from './errors'
+import { dailyDone, startDaily, withIntro } from './gate'
 import { lessonCard } from './lesson'
-import { luckCard, luckPlaceholder, luckTestApplies, runLuckTest } from './luck'
-import { missionCard, nextAction } from './missions'
-import { isTutorial } from './tutorial'
-import { challengeButton, challengeCompare, challengeLuck } from './challenge'
-import { startPractice } from './products'
-import { shareOut, shareUrl } from './share'
+import { luckCard, luckPlaceholder, luckSkipLine, luckTestApplies, runLuckTest } from './luck'
+import { missionCard } from './missions'
+import { isTutorial, startTutorial } from './tutorial'
+import { challengeButton, challengeCompare, challengeLuck, challengeOf, pendingChallengeCard, shareRound } from './challenge'
+import { imageShareAvailable, renderResultCard, shareCard } from './card'
+import { showProductSheet, startPractice } from './products'
+import { shareUrl } from './share'
+import { productOf } from './week'
 
 /** Long rounds have many headlines: show the five that moved the price most. */
 function recapNews(market: Market) {
@@ -46,21 +52,18 @@ const UNLOCK_NOTE: Partial<Record<ProductKey, string>> = {
   coin: '코인은 이 게임에서 가장 크게 출렁이는 상품이에요. 큰 수익 뒤에 큰 손실이 오는 일도 흔해요.',
 }
 
-/**
- * The grade compares with holding all along; the luck test compares with
- * random timing at the same exposure. When they point different ways, say why.
- */
-function bridgeLine(result: RoundResult, percentile: number) {
-  const edge = result.yourReturn - result.buyHoldReturn
-  const luckGood = percentile >= 0.8
-  const luckBad = percentile < 0.4
-  if (edge >= 0.005 && luckBad) {
-    return '위 결과는 그냥 들고 있는 것과, 이 비교는 같은 시간만큼 아무 때나 들고 있는 것과 견준 거예요. 시장을 앞선 건 타이밍보다 덜 들고 있었던 덕이 커요.'
+/** The tutorial's "did they actually hold?" bar (ux2 P0-1). */
+const TUTORIAL_HOLD_SECONDS = 1.5
+
+/** Longest unbroken hold, in ticks. */
+function longestHold(held: readonly boolean[]) {
+  let best = 0
+  let run = 0
+  for (const x of held) {
+    run = x ? run + 1 : 0
+    if (run > best) best = run
   }
-  if (edge <= -0.005 && luckGood) {
-    return '위 결과는 그냥 들고 있는 것과, 이 비교는 같은 시간만큼 아무 때나 들고 있는 것과 견준 거예요. 들고 있던 시간이 짧아 시장엔 뒤졌지만 타이밍은 좋았어요.'
-  }
-  return null
+  return best
 }
 
 function row(label: string, value: number, me = false) {
@@ -72,32 +75,33 @@ function row(label: string, value: number, me = false) {
   )
 }
 
-/**
- * Feedback hierarchy (learning-design report §2, user research #4):
- * above the fold at most three messages, in this order:
- *   1. the grade with the return against simply holding (and the luck rank
- *      once the test has run),
- *   2. the one thing from this round: the mission verdict, or the habit
- *      insight when the mission could not be judged,
- *   3. one next action.
- * The chart and at most one lesson follow; everything else (comparison
- * rows, luck test, fees and interest, news) folds under "자세히 보기".
- * Share and play-again stay on screen in a sticky bar.
- */
-export function resultScreen(
-  go: Navigate,
-  mode: Mode,
-  market: Market,
-  result: RoundResult,
-  unlocked: ProductKey[],
-  roundHabits?: RoundHabits,
-  record: HabitRecord | null = null,
-): Screen {
-  const product = PRODUCTS[market.product]
-  const coaching = coachingFor(result)
-  const mission = coaching?.mission ?? null
-  const lesson = coaching?.lesson ?? null
-  const canvas = h('canvas', { 'aria-label': '가격 흐름과 내가 들고 있던 구간' })
+function versusLine(result: Pick<RoundResult, 'yourReturn' | 'buyHoldReturn'>) {
+  return h(
+    'p',
+    { class: 'result-vs num' },
+    '나 ',
+    h('b', { class: direction(result.yourReturn) }, formatPct(result.yourReturn, 1)),
+    ' · 시장 ',
+    h('b', { class: direction(result.buyHoldReturn) }, formatPct(result.buyHoldReturn, 1)),
+  )
+}
+
+/** "끝났어요. 올랐는데 덜 탔어요. 나 +6.8%, 시장 +9.5%." */
+function endAnnouncement(title: string, result: Pick<RoundResult, 'yourReturn' | 'buyHoldReturn'>) {
+  return `끝났어요. ${title}. 나 ${formatPct(result.yourReturn, 1)}, 시장 ${formatPct(result.buyHoldReturn, 1)}.`
+}
+
+/** Focus the screen's h1 once it is in the page, and read the result out (ux2 P1-11). */
+function focusAndAnnounce(heading: HTMLElement, message: string) {
+  heading.setAttribute('tabindex', '-1')
+  requestAnimationFrame(() => {
+    if (heading.isConnected) heading.focus({ preventScroll: true })
+    announce(message)
+  })
+}
+
+function chartFor(market: Market, result: RoundResult) {
+  const canvas = h('canvas', { role: 'img', 'aria-label': '가격 흐름과 내가 들고 있던 구간' })
   const chart = new Chart(canvas, market, { top: 18, right: 20, bottom: 18, left: 20 })
   const draw = () =>
     chart.draw(
@@ -114,41 +118,212 @@ export function resultScreen(
     )
   requestAnimationFrame(draw)
   window.addEventListener('resize', draw)
+  return {
+    el: h('div', { class: 'result-chart' }, canvas),
+    destroy() {
+      window.removeEventListener('resize', draw)
+      chart.destroy()
+    },
+  }
+}
 
-  const isLong = market.length === 'long'
-  const again = () => startPractice(go, market.product, market.length)
+/**
+ * The next round's mission, without its "why" (that sentence folds under
+ * 자세히 보기, ux2 P1-8). Returns the visible tip and the folded line.
+ */
+function nextMission(outcome: MissionOutcome | null, compact: boolean): { tip: HTMLElement | null; why: HTMLElement | null } {
+  const pick = outcome?.next
+  const id = pick?.id ?? outcome?.id
+  if (!id) return { tip: null, why: null }
+  const def = MISSIONS[id]
+  const fresh = !!pick
+  if (!fresh && compact) {
+    return { tip: h('div', { class: 'tip next-action' }, h('span', null, '다음 판에서 해볼 것'), h('b', null, def.goal)), why: null }
+  }
+  const label = fresh ? (pick.recheck ? '다음 판 미션 · 다시 해보기' : outcome?.outcome === 'new' ? '다음 판 미션' : '새 미션') : '다음 판에서 해볼 것'
+  return {
+    tip: h(
+      'div',
+      { class: 'tip next-action' },
+      h('span', null, label),
+      h('b', null, def.title),
+      h('span', { class: 'next-goal' }, def.goal),
+    ),
+    why: fresh ? h('p', { class: 'fine' }, `${label} · ${def.title}: ${def.why}`) : null,
+  }
+}
 
-  // Filled in when the luck test finishes, so the share carries it.
-  let luck: LuckResult | null = null
-  const share = async () =>
-    shareOut(
-      shareText({
-        market,
-        result,
-        day: mode.kind === 'daily' ? mode.day : null,
-        url: await shareUrl(),
-        luck,
-      }),
-    )
+const weeklyDay = (key: string): WeeklyDay | undefined => {
+  const d = save.daily(key)
+  return d && { key, ...d }
+}
 
-  const heldPct = Math.round(result.heldRatio * 100)
+/**
+ * The end of a daily result: what tomorrow brings and how close this week's
+ * challenge is (ux2 P1-4, top-5 #3). "내일은 채권 · 이번 주 챌린지 2/3, 하루 더 해내면 완료예요".
+ */
+function tomorrowHook(key: string): HTMLElement | null {
+  try {
+    const tomorrow = nextKey(key)
+    const name = PRODUCTS[dailyProduct(tomorrow)].name
+    let weekly = ''
+    try {
+      const p = weeklyProgress(key, weeklyDay, (d) => generateMarket(dailySeed(d.key), productOf(d.key), 'short'))
+      const left = p.days.filter((d) => d.mark === 'future').length
+      const need = p.goal - p.passed
+      if (p.done) weekly = '이번 주 챌린지 완료'
+      else if (left === 0) weekly = '내일부터 새 주 챌린지가 열려요'
+      else if (need <= left) weekly = `이번 주 챌린지 ${p.passed}/${p.goal}, ${need === 1 ? '하루' : `${need}번`} 더 해내면 완료예요`
+    } catch (err) {
+      logError(err, 'tomorrowHook weekly')
+    }
+    return h('div', { class: 'tip tomorrow-hook' }, h('b', null, `내일은 ${name}`), weekly ? h('span', null, weekly) : null)
+  } catch (err) {
+    logError(err, 'tomorrowHook')
+    return null
+  }
+}
 
-  // 1. Grade and the comparison it is about.
-  const luckInline = h('p', { class: 'result-luck num', hidden: true })
-  const gradeBlock = h(
+/**
+ * The guided tutorial's result (ux2 P0-1, P1-7, P2-2): no grade, luck or
+ * habit cards, "연습이라 기록에는 남지 않아요", and a tapper (no hold of
+ * 1.5 s or more) is told what went wrong and offered another try first.
+ * Otherwise the handoff card says the next one is real and starts it.
+ */
+function tutorialResult(go: Navigate, market: Market, result: RoundResult): Screen {
+  const product = PRODUCTS[market.product]
+  const tapped = longestHold(result.held) < TUTORIAL_HOLD_SECONDS * TICKS_PER_SECOND
+  let toggle = false
+  try {
+    toggle = save.getSettings().tapToggle
+  } catch {
+    // Default controls.
+  }
+  const done = dailyDone()
+  const heading = h('h1', { class: 'result-grade' }, tapped ? "아직 '계속 누르기'가 안 됐어요" : '연습 끝, 잘 따라왔어요')
+  const head = h(
     'section',
     { class: 'result-head' },
-    h('h1', { class: 'result-grade' }, result.grade.title),
-    h('p', { class: 'result-line num' }, result.grade.line),
+    heading,
     h(
       'p',
-      { class: 'result-vs num' },
-      '나 ',
-      h('b', { class: direction(result.yourReturn) }, formatPct(result.yourReturn, 1)),
-      ' · 시장 ',
-      h('b', { class: direction(result.buyHoldReturn) }, formatPct(result.buyHoldReturn, 1)),
+      { class: 'result-line' },
+      tapped
+        ? toggle
+          ? '한 번 톡 치면 사고, 다시 톡 치면 팔아요. 그 사이 동안만 들고 있어요.'
+          : '짧게 톡 치면 사자마자 팔려요. 손가락을 화면에 대고 있는 동안만 들고 있어요.'
+        : '손가락을 대고 있는 동안 들고 있고, 떼면 팔아요. 그게 전부예요.',
     ),
-    luckInline,
+    versusLine(result),
+    h('p', { class: 'fine' }, '연습이라 기록에는 남지 않아요.'),
+  )
+  const handoff =
+    tapped || done
+      ? null
+      : h(
+          'section',
+          { class: 'habit-card handoff-card' },
+          h('p', { class: 'habit-kicker' }, '다음은 오늘의 차트'),
+          h('h2', { class: 'habit-title' }, '이번엔 진짜예요'),
+          h('p', { class: 'habit-line' }, '오늘의 차트는 하루 한 번, 모두가 같은 차트로 해요. 40초예요.'),
+        )
+  const chart = chartFor(market, result)
+  const again = () => startTutorial(go)
+  const daily = () => startDaily(go)
+  const home = () => go({ name: 'home' })
+  const actions = tapped
+    ? [
+        h('button', { class: 'btn btn-quiet', onclick: done ? home : daily }, done ? '홈으로' : '오늘의 차트로'),
+        h('button', { class: 'btn btn-primary', onclick: again }, '한 번 더 연습'),
+      ]
+    : [
+        h('button', { class: 'btn btn-quiet', onclick: again }, '한 번 더 연습'),
+        h('button', { class: 'btn btn-primary', onclick: done ? home : daily }, done ? '홈으로' : '오늘의 차트 시작'),
+      ]
+  const el = h(
+    'main',
+    { class: 'screen result-screen' },
+    h('div', { class: 'topbar' }, h('button', { class: 'icon-btn', 'aria-label': '홈으로', onclick: home }, svg(icons.close))),
+    h('p', { class: 'result-title' }, `처음 연습 · ${product.name}`),
+    head,
+    handoff,
+    chart.el,
+    h('div', { class: 'result-actions result-sticky' }, ...actions),
+    h('p', { class: 'fine disclaimer' }, '가상 시장에서 나온 게임 결과예요. 실제 투자 성과나 투자 조언이 아니에요.'),
+  )
+  focusAndAnnounce(heading, tapped ? `끝났어요. 아직 계속 누르기가 안 됐어요. 한 번 더 연습해 보세요.` : endAnnouncement('연습 끝', result))
+  return {
+    el,
+    back() {
+      home()
+      return true
+    },
+    destroy() {
+      clearAnnouncements()
+      chart.destroy()
+    },
+  }
+}
+
+/**
+ * Feedback hierarchy (ux2 P1-8): above the fold only the grade, one card
+ * and the chart.
+ *   1. The grade with the return against simply holding. On a friend's
+ *      challenge the head-to-head card is the headline and the grade sits
+ *      under it. No luck rank up here (ux2 P0-3).
+ *   2. One card: the mission verdict, or the habit insight when the mission
+ *      could not be judged.
+ *   3. The chart, then the next mission (its "why" folds away), one lesson,
+ *      and on a daily chart a waiting challenge and tomorrow's hook.
+ * Everything else (comparison rows, the timing comparison, fees, news)
+ * folds under "자세히 보기". Share and play-again stay in a sticky bar.
+ */
+export function resultScreen(
+  go: Navigate,
+  mode: Mode,
+  market: Market,
+  result: RoundResult,
+  unlocked: ProductKey[],
+  roundHabits?: RoundHabits,
+  record: HabitRecord | null = null,
+): Screen {
+  if (isTutorial(market)) return tutorialResult(go, market, result)
+
+  const product = PRODUCTS[market.product]
+  const coaching = coachingFor(result)
+  const mission = coaching?.mission ?? null
+  const lesson = coaching?.lesson ?? null
+  const chart = chartFor(market, result)
+  const isLong = market.length === 'long'
+  const friend = challengeOf(market)
+  const daily = mode.kind === 'daily'
+
+  // A locked product (a friend's coin chart, a replay of a leverage day) is
+  // never one tap away: the picker shows what is open (QA #8).
+  const again = () => {
+    let open = false
+    try {
+      open = save.isUnlocked(market.product)
+    } catch {
+      // Treat as locked.
+    }
+    if (open) startPractice(go, market.product, market.length)
+    else showProductSheet(go, market.length)
+  }
+  const share = () => shareRound(market, result, mode).catch((err) => logError(err, 'shareRound'))
+
+  const heldPct = Math.round(result.heldRatio * 100)
+  const gradeLine = gradeLineShown(result.grade.line, result.yourReturn, result.buyHoldReturn)
+
+  // 1. The headline: the head-to-head on a challenge round, else the grade.
+  const versus = challengeCompare(market, result, 'h1')
+  const gradeHeading = h(versus ? 'h2' : 'h1', { class: versus ? 'habit-title' : 'result-grade' }, result.grade.title)
+  const gradeBlock = h(
+    'section',
+    { class: versus ? 'result-head result-head-sub' : 'result-head' },
+    gradeHeading,
+    h('p', { class: 'result-line num' }, gradeLine),
+    versus ? null : versusLine(result),
   )
 
   // 2. One thing from this round: the mission verdict when it was judged,
@@ -156,6 +331,23 @@ export function resultScreen(
   const insight = roundHabits ? roundInsight(roundHabits) : null
   const history = save.habitRecords()
   const profile = profileFrom(history)
+  // The image card is drawn up front so a tap keeps the user gesture that
+  // iOS needs for navigator.share. Web only: native shells can't take files yet.
+  const card =
+    mode.kind === 'daily' && imageShareAvailable()
+      ? shareUrl().then((url) =>
+          renderResultCard({
+            format: 'story',
+            market,
+            result,
+            day: mode.day,
+            url: url.replace(/^https?:\/\//, ''),
+            streak: save.streak(mode.key),
+            typeName: profile ? TYPES[profile.type].name : null,
+          }),
+        )
+      : null
+  card?.catch((err) => logError(err, 'result card'))
   const foot = h(
     'button',
     { class: 'habit-foot', onclick: () => go({ name: 'habits' }) },
@@ -174,24 +366,25 @@ export function resultScreen(
         foot,
       )
     : null
-  // A friend's challenge (null otherwise) is the point of that round: it takes
-  // the slot. Challenge rounds never reach completeRound, so no mission there.
-  const versus = challengeCompare(market, result)
+  // Challenge rounds carry no mission (coachingFor gives mission: null).
   const judged = !versus && mission && (mission.outcome === 'pass' || mission.outcome === 'fail')
-  const focus = versus ?? (judged ? missionCard(mission) : habitCard)
+  const focus = versus ? null : judged ? missionCard(mission) : habitCard
   const folded = versus || judged ? habitCard : mission && mission.outcome === 'ineligible' ? missionCard(mission) : null
 
-  // 3. One next action.
-  const next = nextAction(mission, !!judged)
+  // 3. The next mission, its "why" folded.
+  const next = nextMission(mission, !!judged)
 
   // The product's own lesson, unless it already fills the lesson slot.
   const productNote = productLesson(market)
   const productCard =
     productNote && lesson?.id !== `p:${market.product}` ? lessonCard(productNote, `${product.name}의 성격`) : null
-  const slot = lesson ? lessonCard(lesson, lesson.id.startsWith('p:') ? `${product.name}의 성격` : '알아 두면 좋은 것') : null
+  // The habit card already says what the fees cost: no fee lesson on top (ux2 P1-8).
+  const feeTwice = lesson?.id === 'L1' && insight?.habit === 'scalper'
+  const slot = lesson && !feeTwice ? lessonCard(lesson, lesson.id.startsWith('p:') ? `${product.name}의 성격` : '알아 두면 좋은 것') : null
 
-  // The luck test replays the chart hundreds of times: show the page first.
+  // The timing comparison replays the chart hundreds of times: show the page first.
   const luckSlot = luckTestApplies(market, result.held) ? luckPlaceholder() : null
+  const luckSkipped = luckSlot ? null : luckSkipLine(market, result.held)
   let luckCancelled = false
   let luckTimer = 0
   const runLuck = () => {
@@ -202,14 +395,11 @@ export function resultScreen(
         luckSlot.remove()
         return
       }
-      luck = res
       const card = luckCard(res, bridgeLine(result, res.percentile))
       luckSlot.replaceWith(card)
-      luckInline.textContent = `운 비교 · ${luckRank(res)}`
-      luckInline.hidden = false
       challengeLuck(market, res.percentile)
       if (record) save.setLuck(record.id, res.percentile)
-      // L7/L8 belong with the luck card, and only on a round with no other lesson.
+      // L7/L8 belong with the comparison card, and only on a round with no other lesson.
       if (!lesson && record) {
         const tested = save.habitRecords().filter((r) => r.luckPct !== null).length
         const extra = luckLesson(res, tested, save.coach().lessons)
@@ -251,6 +441,7 @@ export function resultScreen(
     'section',
     { class: 'result-details', id: 'result-details', hidden: true },
     folded,
+    next.why,
     productCard,
     h(
       'section',
@@ -262,6 +453,7 @@ export function resultScreen(
       isLong ? row('예금에만 넣었다면', result.cashReturn) : row('1초 단위로 완벽했다면', result.perfectReturn),
     ),
     luckSlot,
+    luckSkipped ? h('p', { class: 'fine' }, luckSkipped) : null,
     h(
       'p',
       { class: 'fine num' },
@@ -302,6 +494,27 @@ export function resultScreen(
     ),
   )
 
+  const title = daily
+    ? `오늘의 차트 #${mode.day}`
+    : friend
+      ? '친구 도전'
+      : mode.kind === 'practice' && mode.replayOf
+        ? '지난 차트 다시 보기'
+        : isLong
+          ? '장기 모드 · 1년'
+          : '연습'
+
+  // A friend's round on a day the player hasn't done yet: point at today's chart too.
+  const tryDaily = friend && !dailyDone()
+  const actions = h(
+    'div',
+    { class: 'result-actions result-sticky' },
+    tryDaily
+      ? h('button', { class: 'btn btn-quiet', onclick: () => withIntro(go, () => startDaily(go)) }, '오늘의 차트도 해보기')
+      : h('button', { class: 'btn btn-quiet', onclick: again }, daily ? '연습 한 판' : '한 판 더'),
+    h('button', { class: 'btn btn-primary', onclick: share }, '공유하기'),
+  )
+
   const el = h(
     'main',
     { class: 'screen result-screen' },
@@ -310,42 +523,35 @@ export function resultScreen(
       { class: 'topbar' },
       h('button', { class: 'icon-btn', 'aria-label': '홈으로', onclick: () => go({ name: 'home' }) }, svg(icons.close)),
     ),
-    h(
-      'p',
-      { class: 'result-title' },
-      `${mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : mode.replayOf ? '지난 차트 복기' : isLong ? '장기 모드 · 1년' : '연습'} · ${product.name}`,
-    ),
+    h('p', { class: 'result-title' }, `${title} · ${product.name}`),
+    versus,
     gradeBlock,
     focus,
-    next,
-    h('div', { class: 'result-chart' }, canvas),
+    chart.el,
     h(
       'div',
       { class: 'reveal' },
       h('span', null, h('b', null, market.company.name), ` ${market.company.code}`),
       h('span', null, market.company.sector),
     ),
+    daily ? pendingChallengeCard(go) : null,
+    next.tip,
     slot,
     ...unlocks,
+    daily ? tomorrowHook(mode.key) : null,
     detailsToggle,
     details,
-    // After the tutorial the next step is the real thing, not a share.
-    isTutorial(market)
-      ? h(
-          'div',
-          { class: 'result-actions result-sticky' },
-          h('button', { class: 'btn btn-quiet', onclick: again }, '한 번 더 연습'),
-          h('button', { class: 'btn btn-primary', onclick: () => go({ name: 'home' }) }, '이제 오늘의 차트'),
-        )
-      : h(
-          'div',
-          { class: 'result-actions result-sticky' },
-          h('button', { class: 'btn btn-quiet', onclick: again }, mode.kind === 'daily' ? '연습 한 판' : '한 판 더'),
-          h('button', { class: 'btn btn-primary', onclick: share }, '공유하기'),
-        ),
+    actions,
     challengeButton(market, result, mode),
+    card
+      ? h('button', { class: 'btn btn-text', onclick: async () => void shareCard(await card, `hold-${market.seed}.png`) }, '이미지로 공유')
+      : null,
+    storageWarning(),
     h('p', { class: 'fine disclaimer' }, '가상 시장에서 나온 게임 결과예요. 실제 투자 성과나 투자 조언이 아니에요.'),
   )
+
+  const heading = (versus?.querySelector('h1') as HTMLElement | null) ?? gradeHeading
+  focusAndAnnounce(heading, endAnnouncement(versus ? `${heading.textContent}. ${result.grade.title}` : result.grade.title, result))
 
   return {
     el,
@@ -356,7 +562,7 @@ export function resultScreen(
     destroy() {
       luckCancelled = true
       clearTimeout(luckTimer)
-      window.removeEventListener('resize', draw)
+      clearAnnouncements()
       chart.destroy()
     },
   }

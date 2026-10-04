@@ -24,6 +24,15 @@ const PLAIN: Record<ProductKey, string> = {
   lev2: '오를 때도 내릴 때도 두 배로 움직이고, 오르락내리락하면 깎여요.',
 }
 
+/**
+ * What a locked row says. The riskiest products are never a countdown to
+ * chase (ux2 P2-7): no "N판 더" toward leverage or coins.
+ */
+const RISKY: readonly ProductKey[] = ['lev2', 'coin']
+function lockedNote(key: ProductKey, left: number) {
+  return RISKY.includes(key) ? '나중에 열려요' : `${Math.max(1, left)}판 더`
+}
+
 /** Products open for practice right now. */
 export function openProducts(): ProductKey[] {
   return PRODUCT_ORDER.filter((k) => save.isUnlocked(k))
@@ -56,7 +65,7 @@ export function showProductSheet(go: Navigate, length: RoundLength = 'short') {
       h(
         'span',
         { class: 'product-state num' },
-        isOpen ? h('span', { class: 'chev', 'aria-hidden': 'true' }, '›') : `${Math.max(1, p.unlockAt - played)}판 더`,
+        isOpen ? h('span', { class: 'chev', 'aria-hidden': 'true' }, '›') : lockedNote(key, p.unlockAt - played),
       ),
     )
   })
@@ -79,7 +88,7 @@ export function showProductSheet(go: Navigate, length: RoundLength = 'short') {
         { class: 'sheet-body' },
         length === 'long'
           ? '장기 모드는 1년치 시장을 5분에 보여줘요. 짧은 판에서는 안 보이던 것들이 보여요.'
-          : '한 번이라도 사고판 판을 할수록 새 상품이 열려요. 요일마다 오늘의 차트 상품도 바뀌어요.',
+          : '판을 하다 보면 다른 상품도 연습할 수 있어요. 요일마다 오늘의 차트 상품도 바뀌어요.',
       ),
       h('div', { class: 'product-list' }, ...rows),
     ),

@@ -26,24 +26,43 @@ test('first launch: tutorial round records nothing, then the daily is offered', 
   await page.clock.runFor(4000)
   await pad.dispatchEvent('pointerup', { pointerId: 1, button: 0 })
   await page.clock.runFor(60_000)
-  await expect(page.getByRole('button', { name: '이제 오늘의 차트' })).toBeVisible()
+  // The handoff card says the next one is real, and its button starts it (ux2 P1-7).
+  await expect(page.getByText('이번엔 진짜예요')).toBeVisible()
+  await expect(page.getByRole('button', { name: '오늘의 차트 시작' })).toBeVisible()
   const save = await saved(page)
   expect(save.seenIntro).toBe(true)
   expect(save.practice?.rounds ?? 0).toBe(0)
   expect(save.habits ?? []).toHaveLength(0)
   expect(save.coach?.lessons ?? []).toHaveLength(0)
-  await page.getByRole('button', { name: '이제 오늘의 차트' }).click()
-  await page.getByRole('button', { name: '시작하기' }).click()
+  await page.getByRole('button', { name: '오늘의 차트 시작' }).click()
   await expect(page.locator('.equity-label')).toContainText('오늘의 차트 #')
 })
 
-// FIXME(Team C): records.ts shows the rules sheet and calls markIntroSeen()
-// before a replay, so the tutorial is skipped for good (arch2 P1-1, QA #7).
-// Team C is unifying the three intro gates (ui/gate.ts withIntro); turn this
-// back on once records.ts goes through it. Nothing in Team B's files can fix it.
-test.fixme('records replay before the tutorial must not skip the tutorial', async ({ page }) => {
+test('a tapper is caught by the tutorial and offered another try first', async ({ page }) => {
+  await page.clock.install()
   await page.goto('./')
-  await page.getByRole('button', { name: /계좌/ }).click() // season row -> records
+  await page.getByRole('button', { name: '시작하기' }).click()
+  const pad = page.locator('.pad')
+  await page.clock.runFor(3000)
+  for (let i = 0; i < 6; i++) {
+    await page.clock.runFor(1500)
+    await pad.dispatchEvent('pointerdown', { pointerId: 1, button: 0 })
+    await page.clock.runFor(150)
+    await pad.dispatchEvent('pointerup', { pointerId: 1, button: 0 })
+  }
+  await page.clock.runFor(60_000)
+  await expect(page.locator('h1')).toHaveText("아직 '계속 누르기'가 안 됐어요")
+  await expect(page.locator('.btn-primary')).toHaveText('한 번 더 연습')
+  await expect(page.getByText('연습이라 기록에는 남지 않아요.')).toBeVisible()
+})
+
+// arch2 P1-1, QA #7: the one intro gate (ui/gate.ts) shows the rules for a
+// replay without marking the intro seen.
+test('records replay before the tutorial must not skip the tutorial', async ({ page }) => {
+  await page.goto('./')
+  // First launch shows only 시작하기; records open from the week strip's sheet.
+  await page.locator('.wk-strip').click()
+  await page.getByRole('button', { name: '기록 보기' }).click()
   await expect(page.locator('h1')).toHaveText('내 기록')
   await page.locator('button.cal-cell').first().click()
   await page.getByRole('button', { name: '해볼게요' }).click()
@@ -65,8 +84,11 @@ test("a challenge on today's daily is held back until the daily is played, and ?
     name: '민수',
   })
   await page.goto(`./?c=${code}`)
-  await expect(page.getByRole('dialog')).toContainText('오늘의 차트를 먼저 하고 오면')
+  await expect(page.getByRole('dialog')).toContainText('민수 님이 오늘의 차트로 도전장을 보냈어요')
+  await expect(page.getByRole('button', { name: '오늘의 차트부터 할게요' })).toBeVisible()
   expect(new URL(page.url()).searchParams.has('c')).toBe(false)
+  // Kept for the daily's result screen (ux2 P0-2).
+  expect((await saved(page)).pendingChallenge).toBe(code)
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.reload()

@@ -67,7 +67,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   const dateTag = isLong ? h('span', { class: 'play-date num' }, calendarLabel(0)) : null
   const equity = h('div', { class: 'equity num' }, formatWon(round.startEquity))
   const delta = h('div', { class: 'equity-delta num flat' }, '0원 (0.00%)')
-  const canvas = h('canvas')
+  const canvas = h('canvas', { role: 'img', 'aria-label': `${product.name} 가격 차트` })
   const countdown = h('div', { class: 'countdown num', 'aria-live': 'assertive' })
   // News banner: what kind of news, whether it sounds good or bad for the
   // price (what it implies, not what happens), the headline, and in the
@@ -320,6 +320,8 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   )
 
   const chart = new Chart(canvas, market)
+  // Keyboard and screen-reader players start on the pad (Space/Enter trade).
+  requestAnimationFrame(() => pad.focus({ preventScroll: true }))
   const marks = market.news.map((n) => historyTicks + n.at)
 
   const onDown = (e: PointerEvent) => {

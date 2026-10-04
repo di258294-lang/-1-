@@ -1,6 +1,10 @@
-import { dailySeed, EPOCH_KEY, nextKey } from './daily'
+import { dailySeed, keyForDay, nextKey } from './daily'
+
+/** Kept here for older imports; the date math lives in daily.ts. */
+export { keyForDay }
 import { ENGINE_VERSION, type RoundLength } from './market'
 import { formatPct } from './format'
+import { shownPct } from './copy'
 import { PRODUCTS, type ProductKey } from './products'
 
 /**
@@ -90,13 +94,6 @@ export function cleanName(raw: unknown): string | null {
   if ([...name].length > NAME_MAX_CHARS) return null
   if (new TextEncoder().encode(name).length > NAME_MAX_BYTES) return null
   return name
-}
-
-/** The KST date key of daily chart #day. */
-export function keyForDay(day: number): string {
-  const d = new Date(`${EPOCH_KEY}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + day - 1)
-  return d.toISOString().slice(0, 10)
 }
 
 function fnv1a(bytes: Uint8Array, end: number) {
@@ -258,10 +255,13 @@ export function takeChallengeCode(href: string): { code: string | null; rest: st
 
 export type Outcome = 'win' | 'lose' | 'tie'
 
-/** Head to head at the precision the screen shows (0.1%p). */
+/**
+ * Head to head at the precision the screen shows (0.1%), from the very
+ * numbers formatPct prints, so "-1.3% vs -1.3%" is always a tie.
+ */
 export function outcome(you: number, friend: number): { result: Outcome; gap: number } {
-  const a = Math.round(you * 1000)
-  const b = Math.round(friend * 1000)
+  const a = Math.round(shownPct(you) * 10)
+  const b = Math.round(shownPct(friend) * 10)
   return { result: a > b ? 'win' : a < b ? 'lose' : 'tie', gap: Math.abs(a - b) / 1000 }
 }
 

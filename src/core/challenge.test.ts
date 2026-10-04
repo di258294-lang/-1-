@@ -246,6 +246,8 @@ describe('outcome', () => {
     expect(outcome(0.05, 0.042)).toEqual({ result: 'win', gap: 0.008 })
     expect(outcome(0.01, 0.042).result).toBe('lose')
     expect(outcome(0.04211, 0.0423).result).toBe('tie')
+    // QA #11c: both print as -1.3%, so neither is ahead.
+    expect(outcome(-0.013, -0.0125)).toEqual({ result: 'tie', gap: 0 })
   })
 })
 
