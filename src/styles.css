@@ -1883,3 +1883,9 @@ button.cal-cell:active {
     min-height: 64px;
   }
 }
+
+/* Mid-height phones (e.g. 390x800): a returning player already knows the
+   product pitch, so its line gives its room to the teaser chart. */
+@media (max-height: 820px) {
+  .home:not(.home-first) .home-lede { display: none; }
+}
