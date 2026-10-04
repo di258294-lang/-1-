@@ -3,7 +3,7 @@ import {
   challengeAccess,
   challengeLabel,
   challengeShareText,
-  challengeUrl,
+  CHALLENGE_PARAM,
   cleanName,
   decodeChallenge,
   encodeChallenge,
@@ -254,7 +254,7 @@ function challengeFor(market: Market, result: Pick<RoundResult, 'yourReturn'>, m
 }
 
 async function sendChallenge(c: Challenge) {
-  const url = challengeUrl(await platform.shareUrl(), encodeChallenge(c))
+  const url = await platform.shareUrl(`${CHALLENGE_PARAM}=${encodeChallenge(c)}`)
   await platform.share(challengeShareText(c, url))
 }
 

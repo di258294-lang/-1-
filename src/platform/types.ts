@@ -25,8 +25,12 @@ export interface Platform {
    * share sheet is not an error.
    */
   share(text: string): Promise<void>
-  /** The link that opens the game, for share texts. */
-  shareUrl(): Promise<string>
+  /**
+   * The link that opens the game, for share texts. `query` (already
+   * URL-encoded, e.g. "c=AbC") is carried into the opened page's
+   * location.search, which on Toss means building the deep link with it.
+   */
+  shareUrl(query?: string): Promise<string>
   storage: PlatformStorage
   /** A stable anonymous user id where the shell provides one, else null. */
   userKey(): Promise<string | null>

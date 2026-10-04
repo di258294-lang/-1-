@@ -90,7 +90,15 @@ export const platform: Platform = {
     }
   },
 
-  shareUrl() {
+  shareUrl(query) {
+    // A deep link with a query (a friend challenge) is made fresh each time;
+    // the mini-app receives it in location.search.
+    if (query) {
+      const path = `intoss://${APP_NAME}?${query}`
+      return Promise.resolve()
+        .then(() => Share.createLink({ path }))
+        .catch(() => path)
+    }
     // A toss.im link that opens the mini-app (installs Toss if needed).
     linkCache ??= Promise.resolve()
       .then(() => Share.createLink({ path: `intoss://${APP_NAME}` }))
