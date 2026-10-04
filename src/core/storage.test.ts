@@ -493,7 +493,7 @@ describe('nickname and pending challenge', () => {
       expect(store.getSettings().nick).toBe('민수')
       expect(ls.has(LEGACY_NICK_KEY)).toBe(false)
       // A name already in the save wins over a stale old key.
-      ls.set(LEGACY_NICK_KEY, '철수')
+      ls.set(LEGACY_NICK_KEY, '하늘')
       migrateLegacyNick(store)
       expect(store.getSettings().nick).toBe('민수')
       // Storage that can't be written keeps the old key for next time.
@@ -503,9 +503,9 @@ describe('nickname and pending challenge', () => {
         },
         write: () => {},
       })
-      ls.set(LEGACY_NICK_KEY, '영희')
+      ls.set(LEGACY_NICK_KEY, '지영')
       migrateLegacyNick(blind)
-      expect(ls.get(LEGACY_NICK_KEY)).toBe('영희')
+      expect(ls.get(LEGACY_NICK_KEY)).toBe('지영')
     } finally {
       vi.unstubAllGlobals()
     }

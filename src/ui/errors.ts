@@ -67,7 +67,7 @@ export function errorScreen(go: Navigate): Screen {
         'p',
         { class: 'result-line' },
         again
-          ? '다시 불러와도 계속되면 앱을 완전히 닫았다가 열어 주세요. 지난 기록은 그대로 있어요.'
+          ? '다시 불러와도 계속되면 HOLD를 완전히 닫았다가 다시 열어 주세요. 지난 기록은 그대로 있어요.'
           : '홈으로 돌아가서 다시 해 주세요. 지난 기록은 그대로 있어요.',
       ),
       h(
