@@ -6,6 +6,7 @@ import { errorScreen, installErrorHandlers, logError } from './ui/errors'
 import { habitsScreen } from './ui/habits'
 import { homeScreen } from './ui/home'
 import { playScreen } from './ui/play'
+import { recordsScreen } from './ui/records'
 import { resultScreen } from './ui/result'
 import { closeAllSheets, closeTopSheet, confirmSheet } from './ui/sheet'
 
@@ -25,6 +26,8 @@ function build(route: Route): Screen {
       return resultScreen(go, route.mode, route.market, route.result, route.unlocked ?? [], route.habits, route.record ?? null)
     case 'habits':
       return habitsScreen(go)
+    case 'records':
+      return recordsScreen(go)
   }
 }
 

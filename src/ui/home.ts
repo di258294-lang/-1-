@@ -2,7 +2,7 @@ import { dateKey, dayNumber, dailySeed, msUntilNextDay, nextKey } from '../core/
 import { dailyProduct, PRODUCTS } from '../core/products'
 import { direction, formatCountdown, formatPct, formatPrice, formatWon, iEyo } from '../core/format'
 import { PROFILE_MIN_ROUNDS, profileFrom, TYPES } from '../core/habits'
-import { SEASON_START, seasonDaysLeft, seasonLabel } from '../core/season'
+import { seasonDaysLeft, seasonLabel } from '../core/season'
 import { generateMarket, playPrice, type Market } from '../core/market'
 import { save, type SavedDaily } from '../core/storage'
 import type { Navigate, Screen } from './app'
@@ -10,7 +10,9 @@ import { Chart } from './chart'
 import { h, toast } from './dom'
 import { showIntro } from './intro'
 import { showProductSheet } from './products'
+import { markSeasonsSeen, pendingRecap, recapCard } from './season'
 import { shareResult } from './share'
+import { weekStripButton } from './week'
 
 const weekday = ['일', '월', '화', '수', '목', '금', '토']
 
@@ -61,10 +63,13 @@ export function homeScreen(go: Navigate): Screen {
     streak > 0 ? h('span', { class: 'home-streak' }, h('b', { class: 'num' }, `${streak}일`), ' 연속') : null,
   )
 
+  const openRecords = () => go({ name: 'records' })
   const hero = h(
     'div',
     { class: 'home-hero' },
     h('p', { class: 'home-date' }, `${dateLabel(key)} · 내일은 ${tomorrowProduct.name}`),
+    // This week at a glance; tapping explains 휴장일 (streak freezes).
+    weekStripButton(save.streakState(key), key, openRecords),
     h(
       'h1',
       { class: 'home-title' },
@@ -108,27 +113,68 @@ export function homeScreen(go: Navigate): Screen {
     played ? null : h('button', { class: 'btn btn-text', onclick: startPractice }, '연습부터 해볼게요'),
   )
 
-  const account = save.accountAfter(key)
-  const seasonReturn = account / SEASON_START - 1
-  const list = h(
-    'section',
-    { class: 'list' },
+  // The season account, with the market ghost to beat. Opens the records
+  // screen (calendar, past seasons, replays).
+  const season = save.seasonSummary(key)
+  const seasonRow = h(
+    'button',
+    { class: 'list-row', onclick: openRecords },
     h(
-      'div',
-      { class: 'list-row' },
-      h('span', { class: 'list-label' }, `${seasonLabel(key)} 계좌`, h('small', null, `시즌 끝까지 ${seasonDaysLeft(key)}일`)),
+      'span',
+      { class: 'list-label' },
+      `${seasonLabel(key)} 계좌`,
       h(
-        'span',
-        { class: 'list-value num' },
-        h('span', null, formatWon(account), h('small', { class: direction(seasonReturn) }, formatPct(seasonReturn))),
+        'small',
+        { class: 'num' },
+        season.days
+          ? `시장 ${formatPct(season.market)} · ${seasonDaysLeft(key)}일 남음`
+          : `시즌 끝까지 ${seasonDaysLeft(key)}일`,
       ),
     ),
     h(
-      'button',
-      { class: 'list-row', onclick: () => withIntro(() => showProductSheet(go, 'long'))() },
-      h('span', { class: 'list-label' }, '장기 모드', h('small', null, '1년치 시장을 5분에')),
-      h('span', { class: 'list-value' }, '5분', h('span', { class: 'chev', 'aria-hidden': 'true' }, '›')),
+      'span',
+      { class: 'list-value num' },
+      h(
+        'span',
+        null,
+        formatWon(season.account),
+        h('small', { class: direction(season.accountReturn) }, formatPct(season.accountReturn)),
+      ),
+      h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
     ),
+  )
+
+  // A closed month, until the player opens or dismisses it. In the page, not
+  // a sheet: nothing pops up on entry.
+  const recap = pendingRecap()
+  const recapEl = recap
+    ? recapCard(recap, {
+        onOpen: () => {
+          markSeasonsSeen(save.pastSeasons().map((p) => p.season))
+          openRecords()
+        },
+        // The unplayed home hides the season row while the recap shows.
+        onDismiss: () => {
+          if (!seasonRow.isConnected) list.prepend(seasonRow)
+        },
+      })
+    : null
+
+  const list = h(
+    'section',
+    { class: 'list' },
+    // One screen tall before the daily: the recap takes the season row's slot.
+    played || !recapEl ? seasonRow : null,
+    // Long mode moves off the one-screen home until today's chart is done
+    // (it stays on the records screen).
+    played
+      ? h(
+          'button',
+          { class: 'list-row', onclick: () => withIntro(() => showProductSheet(go, 'long'))() },
+          h('span', { class: 'list-label' }, '장기 모드', h('small', null, '1년치 시장을 5분에')),
+          h('span', { class: 'list-value' }, '5분', h('span', { class: 'chev', 'aria-hidden': 'true' }, '›')),
+        )
+      : null,
     h(
       'button',
       { class: 'list-row', onclick: () => go({ name: 'habits' }) },
@@ -165,7 +211,7 @@ export function homeScreen(go: Navigate): Screen {
   })
 
   // Fixed to one screen only while the shrinkable chart card is showing.
-  const el = h('main', { class: played ? 'screen' : 'screen home' }, top, hero, body, list, actions)
+  const el = h('main', { class: played ? 'screen' : 'screen home' }, top, hero, body, recapEl, list, actions)
   return { el, destroy: () => cleanups.forEach((f) => f()) }
 }
 

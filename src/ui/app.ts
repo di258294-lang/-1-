@@ -20,6 +20,7 @@ export type Route =
       record?: HabitRecord | null
     }
   | { name: 'habits' }
+  | { name: 'records' }
 
 export type Screen = {
   el: HTMLElement
