@@ -355,7 +355,7 @@ export async function shareRound(market: Market, result: Shareable, mode: Mode, 
   await shareOut(text)
 }
 
-function showSendSheet(market: Market, result: Shareable, mode: Mode) {
+function showSendSheet(market: Market, result: Shareable, mode: Mode, onNamed: (name: string | null) => void) {
   let close = () => {}
   const input = h('input', {
     class: 'challenge-name',
@@ -377,6 +377,7 @@ function showSendSheet(market: Market, result: Shareable, mode: Mode) {
       return
     }
     rememberNick(name)
+    onNamed(name)
     close()
     shareRound(market, result, mode, name).catch((err) => logError(err, 'shareRound'))
   }
@@ -420,12 +421,13 @@ function showSendSheet(market: Market, result: Shareable, mode: Mode) {
  */
 export function challengeButton(market: Market, result: Shareable, mode: Mode): HTMLElement | null {
   if (!challengeFor(market, result, mode, null)) return null
-  const nick = savedNick()
-  return h(
+  const label = (nick: string | null) => (nick ? `보내는 이름 바꾸기 (지금: ${nick})` : '도전장에 내 이름 넣어 보내기')
+  const btn: HTMLButtonElement = h(
     'button',
-    { class: 'btn btn-text challenge-send', onclick: () => showSendSheet(market, result, mode) },
-    nick ? `보내는 이름 바꾸기 (지금: ${nick})` : '도전장에 내 이름 넣어 보내기',
+    { class: 'btn btn-text challenge-send', onclick: () => showSendSheet(market, result, mode, (name) => (btn.textContent = label(name))) },
+    label(savedNick()),
   )
+  return btn
 }
 
 // ---------------------------------------------------------------------------
