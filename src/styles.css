@@ -1,4 +1,12 @@
-@import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+/* Pretendard, subset to the glyphs the game uses (npm run font). One file,
+   ~120 KB, instead of 92 unicode-range slices or the 3 MB full font. */
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-style: normal;
+  font-weight: 45 920;
+  font-display: swap;
+  src: url('./assets/pretendard-subset.woff2') format('woff2');
+}
 
 :root {
   --ink: #111418;
@@ -23,8 +31,10 @@
   --r-md: 16px;
   --r-lg: 22px;
 
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Capacitor 8 on Android injects --safe-area-inset-*; env() is wrong in
+     Android WebView < 140. The Toss build sets --safe-* from SafeArea. */
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 
   color-scheme: light;
 }
@@ -1107,4 +1117,13 @@ button {
 .luck-note {
   font-size: 12px;
   color: var(--ink-3);
+}
+
+/* ---------- Apps in Toss (html.toss, set by src/platform/toss.ts) ---------- */
+
+/* The game nav bar floats a more/close capsule at the top right
+   (right: safe right + 10px, top: safe top + 5-10px). Overlapping it fails
+   review, so keep the top bar's right side clear. */
+.toss .topbar {
+  padding-right: calc(var(--safe-right, 0px) + 80px);
 }
