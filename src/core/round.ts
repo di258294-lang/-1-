@@ -1,5 +1,4 @@
 import { formatPct } from './format'
-import { tickVolatility } from './habits'
 import { playPrice, TICKS_PER_SECOND, TRADING_DAYS_PER_YEAR, type Market } from './market'
 
 export const START_EQUITY = 10_000_000
@@ -213,7 +212,23 @@ export function gradeFor(yourReturn: number, buyHold: number, heldRatio: number,
  * short stock round, 0.4% for bonds, 12% for coin.
  */
 export function roundScale(market: Market) {
-  return tickVolatility(market) * Math.sqrt(market.playTicks)
+  // The same estimate as habits.tickVolatility (round.test.ts checks they
+  // agree). Not imported: habits -> market -> round -> habits would be an
+  // import cycle, and in a bundle it leaves habits' tick constants undefined.
+  const skip = new Set<number>()
+  for (const n of market.news) for (let d = -1; d <= 1; d++) skip.add(n.impactAt + d)
+  let n = 0
+  let s = 0
+  let ss = 0
+  for (let t = 1; t <= market.playTicks; t++) {
+    if (skip.has(t)) continue
+    const r = Math.log(playPrice(market, t) / playPrice(market, t - 1))
+    n++
+    s += r
+    ss += r * r
+  }
+  const vol = n < 2 ? 1e-6 : Math.max(1e-6, Math.sqrt(Math.max(0, (ss - (s * s) / n) / (n - 1))))
+  return vol * Math.sqrt(market.playTicks)
 }
 
 export function summarize(round: Round): RoundResult {

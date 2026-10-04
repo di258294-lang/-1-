@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { tradesFrom } from './habits'
+import { tickVolatility, tradesFrom } from './habits'
 import { pathReturn } from './luck'
 import { generateMarket } from './market'
 import { formatPct } from './format'
@@ -189,5 +189,12 @@ describe('grade titles never contradict the numbers', () => {
     expect(s).toBeGreaterThan(0.001)
     expect(s).toBeLessThan(0.02)
     expect(roundScale(generateMarket(3, 'coin'))).toBeGreaterThan(s * 5)
+    // Same estimate as the habit measures' tick volatility.
+    for (const product of ['stock', 'bond', 'coin'] as const) {
+      for (const length of ['short', 'long'] as const) {
+        const m = generateMarket(11, product, length)
+        expect(roundScale(m)).toBeCloseTo(tickVolatility(m) * Math.sqrt(m.playTicks), 9)
+      }
+    }
   })
 })
