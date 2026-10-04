@@ -114,6 +114,7 @@ describe('calendarState', () => {
     expect(calendarState('2026-10-02', today, day('2026-10-02', 0, 0.1), frozen)).toBe('behind')
     expect(calendarState('2026-10-02', today, day('2026-10-02', 0.1, 0, true), frozen)).toBe('abandoned')
     expect(calendarState('2026-10-04', today, undefined, frozen)).toBe('frozen')
+    expect(calendarState('2026-10-04', today, day('2026-10-04', 0.1, 0, true), frozen)).toBe('frozen')
     expect(calendarState('2026-10-05', today, undefined, frozen)).toBe('missed')
     expect(calendarState('2026-09-30', today, undefined, frozen)).toBe('before')
     expect(calendarState(today, today, undefined, frozen)).toBe('today')

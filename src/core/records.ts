@@ -9,7 +9,9 @@ import { accountAfter, SEASON_START, seasonLabel, seasonLastDay, seasonOf } from
  *
  * Every daily entry in the account counts here, abandoned ones included:
  * they move the account with their checkpointed return, so the market and
- * cash ghosts must ride the same days for a fair comparison.
+ * cash ghosts must ride the same days for a fair comparison. The day counts
+ * (days played, days that beat the market, the medal's minimum) count only
+ * finished rounds, like the streak and the records' win rate.
  */
 
 type Entry = {
@@ -37,9 +39,9 @@ export type SeasonSummary = {
    * the simulated trading days those rounds covered (20 per daily round).
    */
   cash: number
-  /** Rounds in the account so far this season. */
+  /** Finished (not abandoned) rounds so far this season. */
   days: number
-  /** Days you beat that day's buy and hold. */
+  /** Finished rounds that beat that day's buy and hold. */
   beatDays: number
 }
 
@@ -71,9 +73,12 @@ export function seasonSummary(daily: Record<string, Entry>, key: string): Season
     .filter((k) => seasonOf(k) === season && k <= key)
     .sort()
   let market = 1
+  let days = 0
   let beatDays = 0
   for (const k of keys) {
     market *= 1 + daily[k].buyHoldReturn
+    if (daily[k].abandoned) continue
+    days++
     if (daily[k].yourReturn > daily[k].buyHoldReturn) beatDays++
   }
   const account = accountAfter(daily, key)
@@ -84,7 +89,7 @@ export function seasonSummary(daily: Record<string, Entry>, key: string): Season
     accountReturn: account / SEASON_START - 1,
     market: market - 1,
     cash: (1 + CASH_RATE_ANNUAL) ** (tradingDays / TRADING_DAYS_PER_YEAR) - 1,
-    days: keys.length,
+    days,
     beatDays,
   }
 }
