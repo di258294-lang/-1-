@@ -11,7 +11,7 @@ import { MISSIONS, type MissionOutcome } from '../core/missions'
 import { dailyProduct, PRODUCTS, type ProductKey } from '../core/products'
 import type { RoundResult } from '../core/round'
 import { newsKindLabel, newsToneLabel } from '../core/copy'
-import { coachingFor } from '../core/session'
+import { coachingFor, longestHold, TUTORIAL_HOLD_TICKS } from '../core/session'
 import { weeklyProgress, type WeeklyDay } from '../core/weekly'
 import { announce, clearAnnouncements } from './announce'
 import type { Mode, Navigate, Screen } from './app'
@@ -51,20 +51,6 @@ const KICKER = { warn: '이번 판에서 보인 습관', good: '이번 판에서
 const UNLOCK_NOTE: Partial<Record<ProductKey, string>> = {
   lev2: '2배 상품은 오를 때도 내릴 때도 두 배로 움직이고, 출렁이면 녹아요. 실제로는 사전 교육을 받아야 살 수 있는 위험한 상품이에요.',
   coin: '코인은 이 게임에서 가장 크게 출렁이는 상품이에요. 큰 수익 뒤에 큰 손실이 오는 일도 흔해요.',
-}
-
-/** The tutorial's "did they actually hold?" bar (ux2 P0-1). */
-const TUTORIAL_HOLD_SECONDS = 1.5
-
-/** Longest unbroken hold, in ticks. */
-function longestHold(held: readonly boolean[]) {
-  let best = 0
-  let run = 0
-  for (const x of held) {
-    run = x ? run + 1 : 0
-    if (run > best) best = run
-  }
-  return best
 }
 
 function row(label: string, value: number, me = false) {
@@ -210,7 +196,8 @@ function tomorrowHook(key: string): HTMLElement | null {
  */
 function tutorialResult(go: Navigate, market: Market, result: RoundResult): Screen {
   const product = PRODUCTS[market.product]
-  const tapped = longestHold(result.held) < TUTORIAL_HOLD_SECONDS * TICKS_PER_SECOND
+  // The same 1.5 s bar that marks the intro seen (core/session.ts).
+  const tapped = longestHold(result.held) < TUTORIAL_HOLD_TICKS
   // Nothing pressed at all: don't blame a tap that never happened (qa3 P2-2).
   const untouched = result.trades === 0
   let toggle = false
@@ -220,6 +207,15 @@ function tutorialResult(go: Navigate, market: Market, result: RoundResult): Scre
     // Default controls.
   }
   const done = dailyDone()
+  // The save can't be written: a daily would fail after its countdown, so
+  // say why and offer practice instead (qa3 P2-9).
+  let canRecord = false
+  try {
+    canRecord = save.canRecord()
+  } catch {
+    // Can't even ask: treat as not recording.
+  }
+  const blocked = !done && !canRecord
   const heading = h(
     'h1',
     { class: 'result-grade' },
@@ -246,7 +242,7 @@ function tutorialResult(go: Navigate, market: Market, result: RoundResult): Scre
     h('p', { class: 'fine' }, '연습이라 기록에는 남지 않아요.'),
   )
   const handoff =
-    tapped || done
+    tapped || done || blocked
       ? null
       : h(
           'section',
@@ -259,14 +255,20 @@ function tutorialResult(go: Navigate, market: Market, result: RoundResult): Scre
   const again = () => startTutorial(go)
   const daily = () => startDaily(go)
   const home = () => go({ name: 'home' })
+  const practice = () => showProductSheet(go)
+  // The way on: home once today's chart is done, practice when nothing can be saved, else the daily.
+  const next = (label: string) =>
+    done ? ['홈으로', home] as const : blocked ? ['연습 한 판', practice] as const : [label, daily] as const
+  const [tapLabel, tapGo] = next('오늘의 차트로')
+  const [goLabel, goNext] = next('오늘의 차트 시작')
   const actions = tapped
     ? [
-        h('button', { class: 'btn btn-quiet', onclick: done ? home : daily }, done ? '홈으로' : '오늘의 차트로'),
+        h('button', { class: 'btn btn-quiet', onclick: tapGo }, tapLabel),
         h('button', { class: 'btn btn-primary', onclick: again }, '한 번 더 연습'),
       ]
     : [
         h('button', { class: 'btn btn-quiet', onclick: again }, '한 번 더 연습'),
-        h('button', { class: 'btn btn-primary', onclick: done ? home : daily }, done ? '홈으로' : '오늘의 차트 시작'),
+        h('button', { class: 'btn btn-primary', onclick: goNext }, goLabel),
       ]
   const el = h(
     'main',
@@ -274,6 +276,7 @@ function tutorialResult(go: Navigate, market: Market, result: RoundResult): Scre
     h('div', { class: 'topbar' }, h('button', { class: 'icon-btn', 'aria-label': '홈으로', onclick: home }, svg(icons.close))),
     h('p', { class: 'result-title' }, `처음 연습 · ${product.name}`),
     head,
+    blocked ? storageWarning() : null,
     handoff,
     chart.el,
     h('div', { class: 'result-actions result-sticky' }, ...actions),
