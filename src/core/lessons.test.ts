@@ -3,11 +3,11 @@ import { analyzeRound, roundInsight, type Insight } from './habits'
 import { luckLesson, pickLesson, productLesson, roundLessons, type LessonContext } from './lessons'
 import type { LuckResult } from './luck'
 import { generateMarket, type Market } from './market'
-import type { ProductKey } from './products'
+import { PRODUCTS, type ProductKey } from './products'
 import { createRng } from './rng'
 import { advanceTo, createRound, setHolding, summarize } from './round'
 
-const PRODUCTS: ProductKey[] = ['stock', 'bond', 'gold', 'coin', 'lev2']
+const PRODUCTS_LIST: ProductKey[] = ['stock', 'bond', 'gold', 'coin', 'lev2']
 
 /** Plays a round from a list of [from, to) holding stretches, through the real engine. */
 function play(market: Market, runs: Array<[number, number]>) {
@@ -33,7 +33,7 @@ const sentences = (s: string) => s.split(/(?<=요\.|요\?|요!)\s*/).filter(Bool
 describe('micro-lessons', () => {
   it('stay short, plain and honest on every product and pattern', () => {
     const seen = new Set<string>()
-    for (const product of PRODUCTS) {
+    for (const product of PRODUCTS_LIST) {
       for (const length of ['short', 'long'] as const) {
         for (let s = 0; s < (length === 'short' ? 40 : 6); s++) {
           const m = generateMarket(700 + s, product, length)
@@ -49,7 +49,7 @@ describe('micro-lessons', () => {
           for (const l of roundLessons(context(m, runs))) {
             seen.add(l.id)
             expect(sentences(l.line), l.line).toBeLessThanOrEqual(3)
-            expect(l.line).not.toMatch(/NaN|Infinity|undefined|지라시|공시/)
+            expect(l.line).not.toMatch(/NaN|Infinity|undefined|지라시|공시|%p|판정|기준선/)
             expect(l.title.length).toBeLessThanOrEqual(24)
           }
         }
@@ -128,5 +128,21 @@ describe('2x lesson rounding', () => {
         expect(Math.round(Number(m![2]) * 10), line).toBe(2 * Math.round(Number(m![1]) * 10))
       }
     }
+  })
+})
+
+describe('plain words', () => {
+  const JARGON = /공시|지라시|%p|판정|기준선/
+  it('keeps market jargon out of every headline, label and product lesson', () => {
+    for (const product of PRODUCTS_LIST) {
+      const p = PRODUCTS[product]
+      const texts = [p.name, p.pitch, p.filingLabel, p.blindName, ...Object.values(p.filings).flat(), ...Object.values(p.rumors).flat()]
+      for (const t of texts) expect(t, product).not.toMatch(JARGON)
+      for (let s = 0; s < 40; s++) {
+        const l = productLesson(generateMarket(s, product, 'short'))
+        if (l) expect(l.title + l.line, product).not.toMatch(JARGON)
+      }
+    }
+    expect(PRODUCTS.bond.filings.down.join()).toContain('%포인트')
   })
 })

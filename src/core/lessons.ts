@@ -8,9 +8,9 @@ import type { RoundResult } from './round'
 export type Lesson = { title: string; line: string }
 
 const pct = (x: number, digits = 1) => `${x > 0 ? '+' : x < 0 ? '-' : ''}${Math.abs(x * 100).toFixed(digits)}%`
-const pp = (x: number, digits = 1) => `${x > 0 ? '+' : x < 0 ? '-' : ''}${Math.abs(x * 100).toFixed(digits)}%p`
-/** Signed number from an integer count of tenths of a percent (12, '%p' -> "+1.2%p"). */
-const tenths = (t: number, unit: '%' | '%p') => `${t > 0 ? '+' : t < 0 ? '-' : ''}${(Math.abs(t) / 10).toFixed(1)}${unit}`
+const pp = (x: number, digits = 1) => `${x > 0 ? '+' : x < 0 ? '-' : ''}${Math.abs(x * 100).toFixed(digits)}%포인트`
+/** Signed number from an integer count of tenths of a percent (12, '%포인트' -> "+1.2%포인트"). */
+const tenths = (t: number, unit: '%' | '%포인트') => `${t > 0 ? '+' : t < 0 ? '-' : ''}${(Math.abs(t) / 10).toFixed(1)}${unit}`
 
 function range(market: Market) {
   let lo = Infinity
@@ -103,7 +103,7 @@ export function productLesson(market: Market): Lesson | null {
       const gapT = pT - naiveT
       const trendT = Math.round((compounded - (1 + naive)) * 1000)
       const dragT = gapT - trendT
-      const split = `단순 ${L}배라면 ${tenths(naiveT, '%')}인데, 차이 ${tenths(gapT, '%p')} 중 추세 효과가 ${tenths(trendT, '%p')}, 매일 ${L}배로 다시 맞추면서 생긴 변동성 끌림이 ${tenths(dragT, '%p')}예요.`
+      const split = `단순 ${L}배라면 ${tenths(naiveT, '%')}인데, 차이 ${tenths(gapT, '%포인트')} 중 추세 효과가 ${tenths(trendT, '%포인트')}, 매일 ${L}배로 다시 맞추면서 생긴 변동성 끌림이 ${tenths(dragT, '%포인트')}예요.`
       return {
         title: gapT < 0 ? '2배 상품은 출렁일수록 녹아요' : gapT > 0 ? '한 방향으로 쭉 가면 2배보다 더 벌어요' : '이번엔 거의 정확히 2배였어요',
         line:
@@ -183,7 +183,7 @@ const L1: Rule = ({ market, result }) => {
   return {
     id: 'L1',
     title: '수수료가 쌓였어요',
-    line: `이번 판 수수료는 ${formatWon(result.fees)}, 계좌의 ${abs1(share)}였어요. 한 번 사고팔 때마다 ${feePct(2 * market.feeRate)}씩 빠지니, 자주 사고팔수록 넘어야 할 기준선이 높아져요.`,
+    line: `이번 판 수수료는 ${formatWon(result.fees)}, 계좌의 ${abs1(share)}였어요. 한 번 사고팔 때마다 ${feePct(2 * market.feeRate)}씩 빠지니, 자주 사고팔수록 그만큼 더 올라야 본전이에요.`,
   }
 }
 

@@ -227,12 +227,12 @@ describe('bond pricing', () => {
 
 describe('2x lesson', () => {
   it('shows a trend effect and a drag that add up to the gap, exactly as displayed', () => {
-    const num = (s: string) => Math.round(Number(s.replace('%p', '').replace('%', '')) * 10)
+    const num = (s: string) => Math.round(Number(s.replace('%포인트', '').replace('%', '')) * 10)
     for (const length of ['short', 'long'] as const) {
       for (let s = 0; s < (length === 'short' ? 300 : 60); s++) {
         const m = generateMarket(s, 'lev2', length)
         const line = productLesson(m)!.line
-        const match = line.match(/2배 상품 ([+-]?[\d.]+%)\. 단순 2배라면 ([+-]?[\d.]+%)인데, 차이 ([+-]?[\d.]+%p) 중 추세 효과가 ([+-]?[\d.]+%p), .* 끌림이 ([+-]?[\d.]+%p)예요/)
+        const match = line.match(/2배 상품 ([+-]?[\d.]+%)\. 단순 2배라면 ([+-]?[\d.]+%)인데, 차이 ([+-]?[\d.]+%포인트) 중 추세 효과가 ([+-]?[\d.]+%포인트), .* 끌림이 ([+-]?[\d.]+%포인트)예요/)
         expect(match, line).not.toBeNull()
         const [, fund, naive, gap, trend, drag] = match!.map(num)
         expect(trend + drag).toBe(gap)
