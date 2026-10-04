@@ -19,6 +19,7 @@ import { showProductSheet } from './products'
 import { markSeasonsSeen, pendingRecap, recapCard } from './season'
 import { openSettings } from './settings'
 import { shareResult } from './share'
+import { anySheetOpen, onSheetsClosed } from './sheet'
 import { weekStripButton } from './week'
 import { weeklyRow } from './weekly'
 
@@ -76,6 +77,10 @@ export function homeScreen(go: Navigate): Screen {
   // Before the first daily chart a newcomer needs one thing: 시작하기 (ux2 P1-9).
   const firstLaunch = !played && save.dailyHistory().length === 0
   const seen = save.seenIntro()
+  // A daily that can't be kept (storage full, blocked or not loaded, a save
+  // from a newer version) is not offered: its countdown would only end in
+  // "not saved". Practice still works (qa3 P2-9).
+  const canRecord = save.canRecord()
 
   const top = h(
     'div',
@@ -114,15 +119,18 @@ export function homeScreen(go: Navigate): Screen {
   const onStart = () => withIntro(go, () => startDaily(go, key))
   const onPractice = () => withIntro(go, () => showProductSheet(go))
 
+  const blocked = !played && !canRecord
+  const warning = storageWarning()
   const actions = h(
     'div',
     { class: 'home-actions' },
-    played
+    blocked ? warning : null,
+    played || blocked
       ? h('button', { class: 'btn btn-primary', onclick: onPractice }, '연습 한 판')
       : h('button', { class: 'btn btn-primary', onclick: onStart }, '시작하기'),
     // After the tutorial, until the first daily: the next one is the real thing (ux2 P1-7).
-    firstLaunch && seen ? h('p', { class: 'home-handoff' }, '연습 끝! 이제 오늘의 차트는 하루 한 번만 할 수 있어요.') : null,
-    played || !seen ? null : h('button', { class: 'btn btn-text', onclick: onPractice }, '연습부터 해볼게요'),
+    firstLaunch && seen && !blocked ? h('p', { class: 'home-handoff' }, '연습 끝! 이제 오늘의 차트는 하루 한 번만 할 수 있어요.') : null,
+    played || blocked || !seen ? null : h('button', { class: 'btn btn-text', onclick: onPractice }, '연습부터 해볼게요'),
   )
 
   // The season account, with the market ghost to beat. Opens the records
@@ -138,7 +146,8 @@ export function homeScreen(go: Navigate): Screen {
       h(
         'small',
         { class: 'num' },
-        season.days ? `시장 ${formatPct(season.market)} · ${seasonDaysLeft(key)}일 남음` : `${seasonDaysLeft(key)}일 남음`,
+        // Any daily this month, abandoned ones too: they move the account (qa3 P2-8).
+        season.entries ? `시장 ${formatPct(season.market)} · ${seasonDaysLeft(key)}일 남음` : `${seasonDaysLeft(key)}일 남음`,
       ),
     ),
     h(
@@ -216,18 +225,31 @@ export function homeScreen(go: Navigate): Screen {
   document.addEventListener('visibilitychange', checkDate)
   window.addEventListener('focus', checkDate)
   window.addEventListener('pageshow', checkDate)
-  // Another tab played or changed the save: draw home again (QA #14).
+  // Another tab played or changed the save: draw home again (QA #14). Not
+  // while a sheet is open: drawing home closes every sheet, so the redraw
+  // waits until the player closes the last one (qa3 P2-6).
   let redraw = 0
-  const unsubscribe = save.onChange(() => {
+  let redrawPending = false
+  const scheduleRedraw = () => {
     clearTimeout(redraw)
     redraw = window.setTimeout(() => {
-      if (el.isConnected) go({ name: 'home' })
+      if (!redrawPending || !el.isConnected || anySheetOpen()) return
+      redrawPending = false
+      go({ name: 'home' })
     }, 0)
+  }
+  const unsubscribe = save.onChange(() => {
+    redrawPending = true
+    scheduleRedraw()
+  })
+  const unsubscribeSheets = onSheetsClosed(() => {
+    if (redrawPending) scheduleRedraw()
   })
   cleanups.push(() => {
     clearInterval(dateTimer)
     clearTimeout(redraw)
     unsubscribe()
+    unsubscribeSheets()
     document.removeEventListener('visibilitychange', checkDate)
     window.removeEventListener('focus', checkDate)
     window.removeEventListener('pageshow', checkDate)
@@ -249,8 +271,9 @@ export function homeScreen(go: Navigate): Screen {
     recapEl,
     list,
     ctaFirst ? null : actions,
-    storageWarning(),
+    blocked ? null : warning,
   )
+  if (!played) fitTeaser(el, body, actions, ctaFirst, cleanups)
   return {
     el,
     destroy: () =>
@@ -264,6 +287,85 @@ export function homeScreen(go: Navigate): Screen {
   }
 }
 
+/** Below this the teaser chart is a sliver, not a chart (qa3 P2-11). */
+const TEASER_MIN_CHART = 40
+/** The teaser chart's height on the scrolling home when there is room. */
+const TEASER_SCROLL_CHART = 150
+
+/**
+ * Short screens (qa3 P2-11). The one-screen home gives the teaser chart only
+ * what is left over: when that is under TEASER_MIN_CHART the chart and its
+ * "지금까지의 흐름" label go and the price quote stays, and when 시작하기
+ * would still fall below the fold (288x512, 125% zoom) the buttons move up
+ * under the teaser and the rows below scroll. The scrolling home (a month
+ * recap showing) already has the buttons under the teaser; there the chart
+ * gives up height until 시작하기 is on screen, or goes. Measured before the
+ * first paint and again on every resize, from the plain layout each time.
+ */
+function fitTeaser(
+  main: HTMLElement,
+  card: HTMLElement,
+  actions: HTMLElement,
+  scrolling: boolean,
+  cleanups: Array<() => void>,
+) {
+  const canvas = card.querySelector('canvas')
+  const label = card.querySelector<HTMLElement>('.teaser-flow')
+  const cta = actions.querySelector<HTMLElement>('.btn-primary')
+  if (!canvas || !label || !cta) return
+  // Where the buttons sit in the plain layout.
+  const slot = document.createComment('actions')
+  let raf = 0
+  /** How far the bottom of 시작하기 is below the first screen (page coordinates). */
+  const ctaOver = () => cta.getBoundingClientRect().bottom + window.scrollY - window.innerHeight
+  const quoteOnly = () => {
+    canvas.style.display = 'none'
+    label.style.display = 'none'
+    // Just the quote: its own height, and nothing clipped.
+    card.style.flex = 'none'
+  }
+  const fit = () => {
+    cancelAnimationFrame(raf)
+    if (!main.isConnected) return
+    if (slot.parentNode) slot.replaceWith(actions)
+    main.style.height = ''
+    card.style.flex = ''
+    canvas.style.display = ''
+    canvas.style.flex = ''
+    canvas.style.height = ''
+    label.style.display = ''
+    if (scrolling) {
+      // The page scrolls, so the chart has no height of its own to give up
+      // (its drawing size feeds back into it): size it to the room left
+      // above 시작하기 on the first screen, up to TEASER_SCROLL_CHART.
+      canvas.style.flex = 'none'
+      canvas.style.height = '0px'
+      const room = Math.floor(-ctaOver())
+      if (room >= TEASER_MIN_CHART) canvas.style.height = `${Math.min(room, TEASER_SCROLL_CHART)}px`
+      else quoteOnly()
+      return
+    }
+    if (canvas.getBoundingClientRect().height >= TEASER_MIN_CHART) return
+    quoteOnly()
+    if (ctaOver() <= 0) return
+    actions.replaceWith(slot)
+    card.after(actions)
+    main.style.height = 'auto'
+  }
+  raf = requestAnimationFrame(fit)
+  window.addEventListener('resize', fit)
+  // Web fonts can change line heights after the first measure.
+  document.fonts?.ready
+    .then(() => {
+      raf = requestAnimationFrame(fit)
+    })
+    .catch(() => {})
+  cleanups.push(() => {
+    cancelAnimationFrame(raf)
+    window.removeEventListener('resize', fit)
+  })
+}
+
 function teaser(market: Market, productName: string, cleanups: Array<() => void>) {
   const canvas = h('canvas', { role: 'img', 'aria-label': '오늘 차트의 지금까지의 흐름' })
   const open = market.prices[0]
@@ -272,7 +374,12 @@ function teaser(market: Market, productName: string, cleanups: Array<() => void>
   const card = h(
     'section',
     { class: 'teaser' },
-    h('div', { class: 'teaser-head' }, h('span', null, `오늘의 ${productName} · 이름은 비공개`), h('span', null, '지금까지의 흐름')),
+    h(
+      'div',
+      { class: 'teaser-head' },
+      h('span', null, `오늘의 ${productName} · 이름은 비공개`),
+      h('span', { class: 'teaser-flow' }, '지금까지의 흐름'),
+    ),
     h(
       'div',
       { class: 'quote' },

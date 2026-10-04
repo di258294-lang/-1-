@@ -54,6 +54,8 @@ test('a tapper is caught by the tutorial and offered another try first', async (
   await expect(page.locator('h1')).toHaveText("아직 '계속 누르기'가 안 됐어요")
   await expect(page.locator('.btn-primary')).toHaveText('한 번 더 연습')
   await expect(page.getByText('연습이라 기록에는 남지 않아요.')).toBeVisible()
+  // Not learned yet: home's 시작하기 still leads to the tutorial (qa3 P2-2).
+  expect((await saved(page)).seenIntro ?? false).toBe(false)
 })
 
 // arch2 P1-1, QA #7: the one intro gate (ui/gate.ts) shows the rules for a
