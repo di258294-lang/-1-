@@ -28,19 +28,6 @@ type Input = number | string
 
 const clockText = (secs: number) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`
 
-/**
- * save.daily() reads an in-memory copy, so a round started in another tab is
- * invisible to it. Peek at the stored file too. (Belongs in storage.ts.)
- */
-function playedInAnotherTab(key: string) {
-  try {
-    const raw = JSON.parse(localStorage.getItem('hold.save.v1') ?? 'null')
-    return Boolean(raw?.daily?.[key])
-  } catch {
-    return false
-  }
-}
-
 const isPadKey = (e: KeyboardEvent) => e.code === 'Space' || e.code === 'Enter' || e.key === ' ' || e.key === 'Enter'
 
 export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
@@ -199,7 +186,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
       title: mode.kind === 'daily' ? '오늘 차트를 여기서 끝낼까요?' : '장기 모드를 그만할까요?',
       body:
         mode.kind === 'daily'
-          ? '지금까지의 수익률로 기록되고, 오늘은 다시 할 수 없어요.'
+          ? '지금 들고 있던 건 팔고, 남은 시간은 현금으로 계산해서 기록해요. 오늘은 다시 할 수 없어요.'
           : '지금까지 한 판은 기록되지 않아요.',
       confirm: mode.kind === 'daily' ? '여기서 끝내기' : '그만하기',
       cancel: '계속하기',
@@ -332,13 +319,13 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   const goLive = (): boolean => {
     if (mode.kind === 'daily') {
       // Another tab, or a stale screen, already played today's chart.
-      if (save.daily(mode.key) || playedInAnotherTab(mode.key)) {
+      // startDaily re-reads storage and refuses if any entry exists.
+      if (!save.startDaily(mode.key, playPrice(market, playTicks) / playPrice(market, 0) - 1)) {
         phase = 'done'
         toast('오늘 차트는 이미 했어요')
         go({ name: 'home' })
         return false
       }
-      save.startDaily(mode.key, playPrice(market, playTicks) / playPrice(market, 0) - 1)
     }
     phase = 'live'
     countdown.textContent = ''

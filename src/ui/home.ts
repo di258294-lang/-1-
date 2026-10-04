@@ -7,7 +7,7 @@ import { generateMarket, playPrice, type Market } from '../core/market'
 import { save, type SavedDaily } from '../core/storage'
 import type { Navigate, Screen } from './app'
 import { Chart } from './chart'
-import { h } from './dom'
+import { h, toast } from './dom'
 import { showIntro } from './intro'
 import { showProductSheet } from './products'
 import { shareResult } from './share'
@@ -38,6 +38,11 @@ function squaresFor(market: Market, held: boolean[]) {
 export function homeScreen(go: Navigate): Screen {
   const key = dateKey()
   const day = dayNumber(key)
+  // Both are idempotent: archive finished months, and spend "휴장일" tokens on
+  // missed days so a short break doesn't reset the streak.
+  save.closeSeasons(key)
+  const frozen = save.applyStreakFreezes(key)
+  if (frozen.length) toast(`휴장일 ${frozen.length}개로 연속 기록을 지켰어요`)
   const played = save.daily(key)
   // A finished day keeps the product it was played with.
   const productKey = played?.product ?? dailyProduct(key)

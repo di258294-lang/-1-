@@ -17,7 +17,7 @@ import { shareOut } from './share'
 const MEASURES: Record<HabitKey, string> = {
   holder: '손실 난 매매를 얼마나 깊게, 오래 들고 있었는지',
   chicken: '수익 내고 판 뒤에도 가격이 계속 올랐는지',
-  scalper: '40초 동안 몇 번 사고팔았는지',
+  scalper: '한 판 동안 얼마나 자주 사고팔았는지 (40초 기준으로 환산)',
   chaser: '2초 사이 급하게 오른 직후에 샀는지',
   rumor: '지라시가 뜨고 가격이 움직이기 전에 반응했는지',
 }

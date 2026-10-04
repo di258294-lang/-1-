@@ -53,7 +53,7 @@ export function showProductSheet(go: Navigate, length: RoundLength = 'short') {
         { class: 'sheet-body' },
         length === 'long'
           ? '장기 모드는 1년치 시장을 5분에 보여줘요. 짧은 판에서는 안 보이던 것들이 보여요.'
-          : '판을 할수록 새 상품이 열려요. 요일마다 오늘의 차트 상품도 바뀌어요.',
+          : '한 번이라도 사고판 판을 할수록 새 상품이 열려요. 요일마다 오늘의 차트 상품도 바뀌어요.',
       ),
       h('div', { class: 'product-list' }, ...rows),
     ),
