@@ -1,5 +1,6 @@
 import { playPrice, TICKS_PER_SECOND, type Market, type RoundLength } from './market'
 import type { ProductKey } from './products'
+import { showsChance, skillTest } from './skill'
 
 /**
  * Trading habits from behavioral finance, measured from one round's
@@ -12,9 +13,10 @@ import type { ProductKey } from './products'
  */
 export type HabitKey = 'holder' | 'chicken' | 'scalper' | 'chaser' | 'rumor'
 /**
- * A habit type, or one of three "no habit" types: 'machine' (in the market,
- * no habit, timing better than random), 'steady' (in the market, no habit,
- * no timing edge yet: "탐색 중") and 'watcher' (barely in the market).
+ * A habit type, or one of three "no habit" types: 'machine' (no habit, and
+ * timing better than random by the records card's own skill test),
+ * 'steady' (in the market, no habit, no timing edge shown yet: "탐색 중")
+ * and 'watcher' (barely in the market).
  */
 export type TypeKey = HabitKey | 'machine' | 'steady' | 'watcher'
 export type HabitScores = Record<HabitKey, number>
@@ -629,9 +631,6 @@ function poissonTail(k: number, lambda: number) {
 /** Participation below which "no habit" means barely playing (관망형). */
 const MACHINE_MIN_HELD = 0.2
 const MACHINE_MIN_TRADES = 2
-/** Mean luck percentile, over at least this many luck-tested rounds, for 기계형. */
-const MACHINE_MIN_LUCK = 0.55
-const MACHINE_LUCK_ROUNDS = 3
 
 /**
  * Pool the recent rounds and pick the strongest habit. Each habit counts only
@@ -708,17 +707,20 @@ export function profileFrom(records: HabitRecord[]): Profile | null {
   const held = known.length ? mean(known.map((r) => r.heldRatio)) : undefined
   let type: TypeKey = top
   if (scores[top] < TYPE_MIN) {
-    // No habit stands out. 관망형 is about participation only: barely in the
-    // market, or barely trading. An active player is 기계형 only when the
-    // luck tests show timing better than random pressing; otherwise 탐색 중.
-    // (Stop-loss players rank below the median by design, MODEL.md §4, so
-    // luck must never push an active player into 관망형.)
-    const lucky = recent.map((r) => r.luckPct).filter((p): p is number => p !== null)
+    // No habit stands out. 기계형 claims better-than-random timing, so it
+    // uses exactly the records screen's skill test: the same luck results
+    // (the latest SKILL_WINDOW luck-tested rounds of every record, not just
+    // this window) and the same bar (the card's chance line, z ≥ SKILL_Z_SHOW,
+    // which survives the repeated looks). The two screens then never
+    // disagree. Otherwise 관망형 is about participation only: barely in the
+    // market, or barely trading; an active player is 탐색 중. (Stop-loss
+    // players rank below the median by design, MODEL.md §4, so luck must
+    // never push an active player into 관망형.)
+    const skilled = showsChance(skillTest(records.map((r) => r.luckPct)))
     const active =
       !known.length ||
       (mean(known.map((r) => r.heldRatio)) >= MACHINE_MIN_HELD && mean(known.map((r) => r.trades)) >= MACHINE_MIN_TRADES)
-    const skilled = lucky.length >= MACHINE_LUCK_ROUNDS && mean(lucky) >= MACHINE_MIN_LUCK
-    type = !active ? 'watcher' : skilled ? 'machine' : 'steady'
+    type = skilled ? 'machine' : active ? 'steady' : 'watcher'
   }
   const profile: Profile = { type, scores, rounds: recent.length }
   if (held !== undefined) profile.held = held

@@ -9,12 +9,14 @@ import {
   TYPES,
   type HabitRecord,
   type RoundHabits,
+  NO_HABIT_TYPES,
   type TypeKey,
 } from './habits'
 import { luckTest } from './luck'
 import { generateMarket, playPrice, type Market, type RoundLength } from './market'
 import type { ProductKey } from './products'
 import { createRng, type Rng } from './rng'
+import { skillCopy, skillTest } from './skill'
 
 /**
  * Calibration against traders with no habit at all, and scripted traders
@@ -94,8 +96,10 @@ const chaser: Style = (m) => {
  * 0.5 s later, steps aside before bad filings and buys good ones, and ignores
  * rumors. A long cool-down after each stop would make the returns skewed
  * (many small cuts, one long ride): under the luck test's run-placement null
- * that ranks below the median even with no loss on average, and such a
- * trader is rightly left as 탐색 중 (not 기계형) until their timing shows.
+ * that ranks below the median even with no loss on average. Even this
+ * version's edge (mean luck about 0.64) takes more rounds than a profile
+ * window for the records skill card to tell it from luck, so it is rightly
+ * left as 탐색 중 (not 기계형) until then.
  */
 const disciplined: Style = (m) => {
   const n = m.playTicks
@@ -122,6 +126,16 @@ const disciplined: Style = (m) => {
       entry = p
     }
     held[t] = holding
+  }
+  return held
+}
+
+/** Buys only on good filings and holds through the move: clearly better timing, no habit. */
+const filingReader: Style = (m) => {
+  const held = new Array<boolean>(m.playTicks).fill(false)
+  for (const e of m.news) {
+    if (e.kind !== 'filing' || e.implied < 0) continue
+    for (let t = e.at + 1; t < Math.min(m.playTicks, e.impactAt + 10); t++) held[t] = true
   }
   return held
 }
@@ -315,14 +329,56 @@ describe('scripted habits', () => {
     expect(majority(profiles(chaser, 'coin', 50, 10, 33_000))).toBe('chaser')
   })
 
-  it('names a disciplined filing trader a machine', () => {
-    const types = profiles(disciplined, 'stock', 30, 5, 34_000, true)
+  it('keeps random pressers out of 기계형, as the records skill card does', () => {
+    // Before the shared gate, about 30% of these windows were told
+    // "아무 때나 누른 것보다 타이밍이 나았어요". The card's bar (z ≥ 2.9) lets
+    // about 0.2% of single looks through.
+    const types = PRODUCTS.flatMap((product) => [
+      ...profiles(randomTrader, product, 100, 5, 37_000, true),
+      ...profiles(randomTrader, product, 100, 10, 37_500, true),
+    ])
+    expect(types.length).toBe(150)
+    expect(share(types, 'machine')).toBeLessThan(0.02)
+  })
+
+  it('leaves a disciplined trader 탐색 중 until the skill card can tell their timing from luck', () => {
+    // Mean luck about 0.64: real, but 5 rounds can't separate it from luck.
+    const types = profiles(disciplined, 'stock', 50, 5, 34_000, true)
+    expect(majority(types)).toBe('steady')
+    for (const t of types) expect(['steady', 'machine']).toContain(t)
+  })
+
+  it('names a filing reader with clearly better timing a machine', () => {
+    // Buys good filings only and holds through the move: mean luck about 0.93.
+    const types = profiles(filingReader, 'stock', 50, 5, 34_500, true)
     expect(majority(types)).toBe('machine')
+  })
+
+  it('types a window 기계형 exactly when the records card shows its chance line', () => {
+    let machines = 0
+    let others = 0
+    for (const style of [randomTrader, disciplined, filingReader]) {
+      const recs: HabitRecord[] = []
+      for (let s = 0; recs.length < 60 && s < 200; s++) {
+        const p = play(style, 'gold', 38_000 + s, 'short', undefined, true)
+        if (p.habits.trades > 0) recs.push(p.record)
+      }
+      for (let i = 5; i <= recs.length; i++) {
+        const seen = recs.slice(0, i)
+        const card = skillTest(seen.map((r) => r.luckPct))
+        const type = profileFrom(seen)!.type
+        expect(type === 'machine').toBe(card !== null && skillCopy(card).showsChance && NO_HABIT_TYPES.includes(type))
+        if (type === 'machine') machines++
+        else others++
+      }
+    }
+    expect(machines).toBeGreaterThan(10)
+    expect(others).toBeGreaterThan(10)
   })
 
   it('does not hand the machine type to a single-tap farmer', () => {
     for (const taps of [1, 3]) {
-      const types = profiles(tapper(taps), 'stock', 50, 5, 35_000 + taps)
+      const types = profiles(tapper(taps), 'stock', 50, 5, 35_000 + taps, true)
       expect(types).not.toContain('machine')
       expect(majority(types)).toBe('watcher')
     }

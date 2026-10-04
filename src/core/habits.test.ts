@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { createRng } from './rng'
+import { skillCopy, skillTest } from './skill'
 import {
   analyzeRound,
   habitBand,
@@ -240,19 +242,46 @@ describe('profileFrom', () => {
     expect(profileFrom(times(5, { heldRatio: 0.01, trades: 1 }))?.type).toBe('watcher')
     expect(profileFrom(times(5, { heldRatio: 0.5, trades: 1 }))?.type).toBe('watcher')
     expect(profileFrom(times(5, { heldRatio: 0.1, trades: 4 }))?.type).toBe('watcher')
-    // Even with a great luck test.
-    expect(profileFrom(times(5, { heldRatio: 0.1, trades: 4, luckPct: 0.9 }))?.type).toBe('watcher')
+    // A good-looking luck test the records card can't tell from luck changes nothing.
+    expect(profileFrom(times(5, { heldRatio: 0.1, trades: 4, luckPct: 0.7 }))?.type).toBe('watcher')
   })
 
-  it('gives active players with no habit 기계형 only with better-than-random timing, else 탐색 중', () => {
+  it('gives 기계형 only when the records skill card shows its chance line, else 탐색 중', () => {
     // Stop-loss players rank below the median; they are in the market, so never 관망형.
     expect(profileFrom(times(5, { luckPct: 0.4 }))?.type).toBe('steady')
-    expect(profileFrom(times(5, { luckPct: 0.7 }))?.type).toBe('machine')
-    // Two known results are too few to claim better timing.
+    // Mean 0.7 over 5 rounds: the card says "아직 구별되지 않아요" (z ≈ 1.5), so no timing claim.
+    expect(profileFrom(times(5, { luckPct: 0.7 }))?.type).toBe('steady')
+    // Mean 0.9 over 5 rounds: z ≈ 3.1, the card shows its chance line.
+    expect(profileFrom(times(5, { luckPct: 0.9 }))?.type).toBe('machine')
+    // The same holds for a light player: the timing claim is the card's, and
+    // calling them 관망형 ("타이밍도 아직 드러나지 않았어요") would contradict it.
+    expect(profileFrom(times(5, { heldRatio: 0.1, trades: 4, luckPct: 0.9 }))?.type).toBe('machine')
+    // Two known results are too few for the card at all.
     expect(profileFrom([...times(2, { luckPct: 0.9 }), ...times(3)])?.type).toBe('steady')
+    // A habit still wins over timing.
+    expect(profileFrom(times(5, { luckPct: 0.95 }, { ...zero, scalper: 0.9 }))?.type).toBe('scalper')
     expect(TYPES.steady.name).toBe('탐색 중')
     expect(TYPES.watcher.line).not.toMatch(/대부분 지켜보/)
     expect(TYPES.machine.line).not.toMatch(/손실은 빨리 끊고/)
+  })
+
+  it('agrees with the records skill card on every luck history, including rounds outside the profile window', () => {
+    const rng = createRng(9)
+    const seen = { machine: 0, other: 0 }
+    for (let trial = 0; trial < 400; trial++) {
+      const n = 5 + rng.int(0, 15)
+      const lean = rng.next() * 0.5
+      const recs = Array.from({ length: n }, () =>
+        recordOf(zero, { luckPct: rng.chance(0.15) ? null : Math.min(1, 0.5 + lean * rng.next() + 0.5 * rng.next() * rng.next()) }),
+      )
+      const card = skillTest(recs.map((r) => r.luckPct))
+      const machine = profileFrom(recs)?.type === 'machine'
+      expect(machine).toBe(card !== null && skillCopy(card).showsChance)
+      seen[machine ? 'machine' : 'other']++
+    }
+    // Both sides of the line really came up.
+    expect(seen.machine).toBeGreaterThan(40)
+    expect(seen.other).toBeGreaterThan(40)
   })
 
   it('does not count records migrated without participation as barely playing', () => {

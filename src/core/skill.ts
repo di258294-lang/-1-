@@ -83,6 +83,12 @@ export function skillRoundsCounted(percentiles: ReadonlyArray<number | null | un
  * of the time over 50 rounds instead of 53% with a one-look 5% cut.
  */
 export const SKILL_Z_SHOW = 2.9
+/**
+ * True when the records card shows its chance line. The habits type 기계형
+ * uses this too, so the two screens never disagree about timing.
+ */
+export const showsChance = (r: SkillResult | null): boolean => r !== null && r.z >= SKILL_Z_SHOW
+
 /** One-sided 90% band for the mean percentile: ±1.645·√(1/(12n)). */
 export const SKILL_BAND_Z = 1.645
 
@@ -108,7 +114,7 @@ const pct = (x: number) => Math.round(Math.min(1, Math.max(0, x)) * 100)
 export function skillCopy(r: SkillResult): SkillCopy {
   const caveat = '작은 수익에서 바로 파는 방식은 이 비교에서 높게 나오기 쉬워요. 실력을 재는 점수가 아니에요.'
   const headline = `최근 ${r.n}판 평균, 아무 때나 누른 판보다 잘한 비율 ${pct(r.mean)}%`
-  if (r.z >= SKILL_Z_SHOW) {
+  if (showsChance(r)) {
     const p = r.pLuck * 100
     const chance = p < 1 ? '1% 미만이에요' : `약 ${Math.round(p)}%예요`
     return {
