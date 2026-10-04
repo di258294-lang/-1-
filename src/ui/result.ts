@@ -12,6 +12,7 @@ import { h, icons, svg } from './dom'
 import { logError } from './errors'
 import { luckCard, luckPlaceholder, luckTestApplies, runLuckTest } from './luck'
 import { isTutorial } from './tutorial'
+import { challengeButton, challengeCompare, challengeLuck } from './challenge'
 import { startPractice } from './products'
 import { shareResult } from './share'
 
@@ -135,6 +136,7 @@ export function resultScreen(
         return
       }
       luckSlot.replaceWith(luckCard(luck, bridgeLine(result, luck.percentile)))
+      challengeLuck(market, luck.percentile)
       if (record) save.setLuck(record.id, luck.percentile)
     } catch (err) {
       logError(err, 'luck test')
@@ -188,6 +190,7 @@ export function resultScreen(
     ),
     h('h1', { class: 'result-grade' }, result.grade.title),
     h('p', { class: 'result-line' }, result.grade.line),
+    challengeCompare(market, result),
     ...unlocked.map((k) =>
       h(
         'button',
@@ -251,6 +254,7 @@ export function resultScreen(
           h('button', { class: 'btn btn-quiet', onclick: again }, mode.kind === 'daily' ? '연습 한 판' : '한 판 더'),
           h('button', { class: 'btn btn-primary', onclick: share }, '공유하기'),
         ),
+    challengeButton(market, result, mode),
     h('p', { class: 'fine disclaimer' }, '가상 시장에서 나온 게임 결과예요. 실제 투자 성과나 투자 조언이 아니에요.'),
   )
 
