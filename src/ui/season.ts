@@ -58,7 +58,7 @@ export function recapCard(
     h(
       'button',
       { class: 'recap-card-body', onclick: opts.onOpen },
-      h('span', { class: 'habit-kicker' }, `${archivedLabel(s.season)} 결산`),
+      h('span', { class: 'habit-kicker' }, `${archivedLabel(s.season)} 성적표`),
       h('span', { class: 'habit-title num' }, seasonVersus(line)),
       h('span', { class: 'habit-line num' }, seasonDetail(line)),
       s.medal ? h('span', { class: 'recap-medal' }, MEDAL_LINE) : null,
@@ -67,7 +67,7 @@ export function recapCard(
       'button',
       {
         class: 'icon-btn recap-close',
-        'aria-label': `${archivedLabel(s.season)} 결산 닫기`,
+        'aria-label': `${archivedLabel(s.season)} 성적표 닫기`,
         onclick: () => {
           markSeasonsSeen(save.pastSeasons().map((p) => p.season))
           card.remove()
