@@ -1485,3 +1485,106 @@ button.cal-cell:active {
   width: 14px;
   border-radius: 50%;
 }
+
+/* coaching ------------------------------------------------------------------
+   Missions, lessons and the result screen's feedback hierarchy. Reuses the
+   habit-card / tip / lesson-card look; only the new bits live here. */
+
+.result-vs {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.result-vs b {
+  font-weight: 600;
+}
+
+.result-luck {
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.mission-progress {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.mission-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.mission-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--well);
+}
+
+.mission-dots i.pass {
+  background: var(--ink);
+}
+
+.mission-dots i.fail {
+  box-shadow: inset 0 0 0 2px var(--ink-4);
+  background: transparent;
+}
+
+.next-action {
+  margin-top: 12px;
+}
+
+.next-action .next-goal {
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.unlock-quiet {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.unlock-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.result-details > :first-child {
+  margin-top: 4px;
+}
+
+.recap-note {
+  margin-top: 0;
+}
+
+/* Share and play-again stay reachable on a long result. */
+.result-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: auto -20px 0;
+  padding: 12px 20px calc(var(--safe-bottom) + 12px);
+  background: var(--canvas);
+  box-shadow: 0 -1px var(--grid);
+}
+
+.result-screen {
+  padding-bottom: 12px;
+}
+
+.result-screen .disclaimer {
+  margin-bottom: calc(var(--safe-bottom) + 8px);
+}
+
+.mission-chip .list-label small {
+  font-size: 13px;
+}
