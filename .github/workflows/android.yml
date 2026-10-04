@@ -1,7 +1,7 @@
 name: Android
 
-# Builds a test APK and publishes it at a fixed download link a phone can
-# open directly:
+# Tests, then builds a test APK and publishes it at a fixed download link a
+# phone can open directly:
 # https://github.com/di258294-lang/-1-/releases/download/android-test/hold.apk
 
 on:
@@ -12,32 +12,36 @@ on:
 permissions:
   contents: write
 
+# One build per branch; a newer push cancels the older build of that branch.
 concurrency:
-  group: android
+  group: android-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   apk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
           cache: gradle
       - run: npm ci
+      - run: npm test
+      - run: npm run font:check
       - run: npm run build
       - run: npx cap sync android
       - name: Build test APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        # The run number as versionCode lets each test APK install over the last.
+        run: ./gradlew assembleDebug --no-daemon -PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}
       - run: cp android/app/build/outputs/apk/debug/app-debug.apk hold.apk
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: hold-apk
           path: hold.apk
@@ -45,10 +49,18 @@ jobs:
       - name: Publish to the android-test release
         env:
           GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.run_number }}
+        # Replace the asset in place instead of deleting and recreating the
+        # release, so the download link never 404s (a cancelled run used to
+        # leave no release at all).
         run: |
-          gh release delete android-test --yes --cleanup-tag || true
-          gh release create android-test hold.apk \
-            --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "안드로이드 테스트 버전" \
-            --notes "폰에서 hold.apk를 눌러 설치하세요. 테스트용 빌드이고, 스토어 버전이 아니에요. (${GITHUB_SHA::7})"
+          notes="폰에서 hold.apk를 눌러 설치하세요. 테스트용 빌드이고, 스토어 버전이 아니에요. (${GITHUB_SHA::7}, 빌드 $RUN)"
+          if ! gh release view android-test >/dev/null 2>&1; then
+            gh release create android-test \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "안드로이드 테스트 버전" \
+              --notes "$notes" || gh release view android-test >/dev/null
+          fi
+          gh release upload android-test hold.apk --clobber
+          gh release edit android-test --notes "$notes"

@@ -12,7 +12,7 @@ import { save } from '../core/storage'
 import type { Navigate, Screen } from './app'
 import { h, icons, svg } from './dom'
 import { showProductSheet } from './products'
-import { shareOut } from './share'
+import { shareOut, shareUrl } from './share'
 
 const MEASURES: Record<HabitKey, string> = {
   holder: '손실 난 매매를 얼마나 깊게, 오래 들고 있었는지',
@@ -100,7 +100,7 @@ export function habitsScreen(go: Navigate): Screen {
         'div',
         { class: 'result-actions' },
         h('button', { class: 'btn btn-quiet', onclick: practice }, '연습 한 판'),
-        h('button', { class: 'btn btn-primary', onclick: () => shareOut(profileShareText(profile, location.origin)) }, '공유하기'),
+        h('button', { class: 'btn btn-primary', onclick: async () => shareOut(profileShareText(profile, await shareUrl())) }, '공유하기'),
       ),
     ),
   }

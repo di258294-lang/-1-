@@ -1,11 +1,13 @@
 import './styles.css'
+import { platform } from '#platform'
+import { BACKUP_KEY, hydrate, SAVE_KEY } from './core/storage'
 import type { Route, Screen } from './ui/app'
 import { errorScreen, installErrorHandlers, logError } from './ui/errors'
 import { habitsScreen } from './ui/habits'
 import { homeScreen } from './ui/home'
 import { playScreen } from './ui/play'
 import { resultScreen } from './ui/result'
-import { closeAllSheets, closeTopSheet } from './ui/sheet'
+import { closeAllSheets, closeTopSheet, confirmSheet } from './ui/sheet'
 
 installErrorHandlers()
 
@@ -60,4 +62,39 @@ export function handleBack(): boolean {
   return true
 }
 
-go({ name: 'home' })
+function confirmExit() {
+  confirmSheet({
+    title: 'HOLD를 끝낼까요?',
+    body: '오늘의 기록은 저장돼 있어요.',
+    confirm: '끝내기',
+    cancel: '계속하기',
+    onConfirm: () => void platform.exit(),
+    onCancel: () => {},
+  })
+}
+
+/** Resolves to null if the shell's storage doesn't answer in time. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([p, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))])
+}
+
+async function boot() {
+  await platform.init()
+  // The Toss app keeps the save in its own async storage; load it before the
+  // first render. Browsers and the native apps keep using localStorage. The
+  // timeout keeps first paint well inside the platform's 10-second rule.
+  if (platform.kind === 'toss') {
+    const raw = await withTimeout(platform.storage.get(SAVE_KEY).catch(() => null), 2000)
+    hydrate(
+      raw,
+      (next) => platform.storage.set(SAVE_KEY, next),
+      (backup) => void platform.storage.set(BACKUP_KEY, backup),
+    )
+  }
+  platform.onBack(() => {
+    if (!handleBack()) confirmExit()
+  })
+  go({ name: 'home' })
+}
+
+void boot()

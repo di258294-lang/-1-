@@ -1,6 +1,11 @@
 node_modules
 dist
+dist-toss
+dist-single
+*.ait
 test-results
 playwright-report
 *.log
 .DS_Store
+.env.local
+.env.*.local

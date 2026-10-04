@@ -40,7 +40,11 @@ let installed = false
 export function installErrorHandlers() {
   if (installed) return
   installed = true
-  window.addEventListener('error', (e) => logError(e.error ?? e.message, 'window.error'))
+  window.addEventListener('error', (e) => {
+    // A benign browser notice, not a failure: layout settled a frame later.
+    if (typeof e.message === 'string' && e.message.startsWith('ResizeObserver loop')) return
+    logError(e.error ?? e.message, 'window.error')
+  })
   window.addEventListener('unhandledrejection', (e) => logError(e.reason, 'unhandledrejection'))
 }
 
