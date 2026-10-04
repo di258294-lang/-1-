@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { tradesFrom } from './habits'
 import { pathReturn } from './luck'
 import { generateMarket } from './market'
-import { advanceTo, createRound, setHolding, summarize, type Round } from './round'
+import { advanceTo, createRound, EVEN_EDGE, gradeFor, setHolding, summarize, type Round } from './round'
 
 const runsOf = (held: boolean[]) => held.filter((on, t) => on && !held[t - 1]).length
 
@@ -83,5 +83,51 @@ describe('round: every trade leaves a trace in held', () => {
     quickTap(r)
     expect(r.fees).toBeGreaterThan(0)
     expect(r.trades).toBe(1)
+  })
+})
+
+describe('grade titles never contradict the numbers', () => {
+  // Wording that reads as a loss or a miss, and wording that reads as praise.
+  const LOSSY = /잃|거꾸로|늦|못/
+  const PRAISE = /앞섰|벌었|잘|장인|좋|정답/
+  const BEHIND = /덜 탔|더 잃|거꾸로|늦/
+  const AHEAD = /앞섰|덜 잃/
+  const returns = [-0.4, -0.12, -0.05, -0.02, -0.006, -0.004, -0.001, 0, 0.001, 0.004, 0.006, 0.02, 0.05, 0.12, 0.4]
+
+  it('matches the tone of the title to the sign of the return and of the edge', () => {
+    let checked = 0
+    for (const r of returns) {
+      for (const b of returns) {
+        for (const held of [0, 0.05, 0.5, 1]) {
+          // Sitting out the whole round earns interest only: a small gain.
+          const you = held === 0 ? 0.002 : r
+          const { title, line } = gradeFor(you, b, held)
+          const edge = you - b
+          const tag = `${title} (you ${you}, market ${b}, held ${held})`
+          expect(title.length, tag).toBeGreaterThan(0)
+          expect(line.length, tag).toBeGreaterThan(0)
+          if (you > 0) expect(title, tag).not.toMatch(LOSSY)
+          if (you < 0) expect(title, tag).not.toMatch(PRAISE)
+          if (edge > EVEN_EDGE) expect(title, tag).not.toMatch(BEHIND)
+          if (edge < -EVEN_EDGE) expect(title, tag).not.toMatch(AHEAD)
+          // No identity labels ("타이밍 장인"): titles describe the round.
+          expect(title, tag).toMatch(/요$/)
+          checked++
+        }
+      }
+    }
+    expect(checked).toBe(returns.length * returns.length * 4)
+  })
+
+  it('keeps "거꾸로 탔어요" for losing money while the market rose', () => {
+    expect(gradeFor(-0.03, 0.05, 0.6).title).toBe('거꾸로 탔어요')
+    expect(gradeFor(0.04, 0.2, 0.6).title).toBe('올랐는데 덜 탔어요')
+    expect(gradeFor(-0.006, 0.155, 0.1).title).toBe('거꾸로 탔어요')
+    expect(gradeFor(-0.08, -0.03, 0.6).title).toBe('시장보다 더 잃었어요')
+    expect(gradeFor(-0.01, -0.06, 0.6).title).toBe('시장보다 덜 잃었어요')
+  })
+
+  it('adds a luck caveat to big wins', () => {
+    expect(gradeFor(0.2, 0.01, 0.5).line).toMatch(/운/)
   })
 })
