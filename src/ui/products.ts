@@ -4,6 +4,7 @@ import { hashString } from '../core/rng'
 import { save } from '../core/storage'
 import type { Navigate } from './app'
 import { h } from './dom'
+import { openSheet } from './sheet'
 
 export function startPractice(go: Navigate, product: ProductKey, length: RoundLength = 'short') {
   const seed = hashString(`practice/${product}/${length}/${Date.now()}/${Math.random()}`)
@@ -13,7 +14,7 @@ export function startPractice(go: Navigate, product: ProductKey, length: RoundLe
 /** Bottom sheet: pick what to practice. Locked products say how to open them. */
 export function showProductSheet(go: Navigate, length: RoundLength = 'short') {
   const played = save.roundsPlayed()
-  const close = () => scrim.remove()
+  let close = () => {}
   const pick = (key: ProductKey) => () => {
     close()
     startPractice(go, key, length)
@@ -57,5 +58,5 @@ export function showProductSheet(go: Navigate, length: RoundLength = 'short') {
       h('div', { class: 'product-list' }, ...rows),
     ),
   )
-  document.body.append(scrim)
+  close = openSheet(scrim)
 }

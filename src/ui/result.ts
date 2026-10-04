@@ -1,5 +1,5 @@
 import { direction, formatPct, formatWon } from '../core/format'
-import { analyzeRound, PROFILE_MIN_ROUNDS, profileFrom, roundInsight, TYPES, type HabitRecord, type RoundHabits } from '../core/habits'
+import { PROFILE_MIN_ROUNDS, profileFrom, roundInsight, TYPES, type HabitRecord, type RoundHabits } from '../core/habits'
 import { seasonLabel } from '../core/season'
 import { save } from '../core/storage'
 import { calendarLabel, dayOf, playPrice, TICKS_PER_SECOND, type Market } from '../core/market'
@@ -9,7 +9,8 @@ import type { RoundResult } from '../core/round'
 import type { Mode, Navigate, Screen } from './app'
 import { Chart } from './chart'
 import { h, icons, svg } from './dom'
-import { luckCard } from './luck'
+import { logError } from './errors'
+import { luckCard, luckPlaceholder, luckTestApplies, runLuckTest } from './luck'
 import { startPractice } from './products'
 import { shareResult } from './share'
 
@@ -27,6 +28,23 @@ function recapNews(market: Market) {
 }
 
 const KICKER = { warn: '이번 판에서 보인 습관', good: '이번 판에서 잘한 점', none: '이번 판의 습관' } as const
+
+/**
+ * The grade compares with holding all along; the luck test compares with
+ * random timing at the same exposure. When they point different ways, say why.
+ */
+function bridgeLine(result: RoundResult, percentile: number) {
+  const edge = result.yourReturn - result.buyHoldReturn
+  const luckGood = percentile >= 0.8
+  const luckBad = percentile < 0.4
+  if (edge >= 0.005 && luckBad) {
+    return '위 등급은 그냥 들고 있는 것과, 이 비교는 같은 시간만큼 아무 때나 들고 있는 것과 견준 거예요. 시장을 앞선 건 타이밍보다 덜 들고 있었던 덕이 커요.'
+  }
+  if (edge <= -0.005 && luckGood) {
+    return '위 등급은 그냥 들고 있는 것과, 이 비교는 같은 시간만큼 아무 때나 들고 있는 것과 견준 거예요. 들고 있던 시간이 짧아 시장엔 뒤졌지만 타이밍은 좋았어요.'
+  }
+  return null
+}
 
 function row(label: string, value: number, me = false) {
   return h(
@@ -81,7 +99,7 @@ export function resultScreen(
   const heldPct = Math.round(result.heldRatio * 100)
 
   // The habit this round revealed, and where it leaves the player's type.
-  const insight = roundInsight(roundHabits ?? analyzeRound(market, result.held, result.fees))
+  const insight = roundHabits ? roundInsight(roundHabits) : null
   const history = save.habitRecords()
   const profile = profileFrom(history)
   const foot = h(
@@ -92,18 +110,42 @@ export function resultScreen(
       : h('span', null, '성향 진단까지 ', h('b', { class: 'num' }, `${PROFILE_MIN_ROUNDS - history.length}판`), ' 남았어요'),
     h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
   )
-  const habitCard = h(
-    'section',
-    { class: 'habit-card' },
-    h('p', { class: 'habit-kicker' }, KICKER[insight.tone]),
-    h('h2', { class: 'habit-title' }, insight.title),
-    h('p', { class: 'habit-line num' }, insight.line),
-    foot,
-  )
+  const habitCard = insight
+    ? h(
+        'section',
+        { class: 'habit-card' },
+        h('p', { class: 'habit-kicker' }, KICKER[insight.tone]),
+        h('h2', { class: 'habit-title' }, insight.title),
+        h('p', { class: 'habit-line num' }, insight.line),
+        foot,
+      )
+    : null
+
+  // The luck test replays the chart hundreds of times: show the page first.
+  const luckSlot = luckTestApplies(market, result.held) ? luckPlaceholder() : null
+  let luckCancelled = false
+  let luckTimer = 0
+  const runLuck = () => {
+    if (luckCancelled || !luckSlot) return
+    try {
+      const luck = runLuckTest(market, result.held)
+      if (!luck) {
+        luckSlot.remove()
+        return
+      }
+      luckSlot.replaceWith(luckCard(luck, bridgeLine(result, luck.percentile)))
+      if (record) save.setLuck(record.id, luck.percentile)
+    } catch (err) {
+      logError(err, 'luck test')
+      luckSlot.remove()
+    }
+  }
+  // After the first paint, so the result shows up at once.
+  if (luckSlot) requestAnimationFrame(() => (luckTimer = window.setTimeout(runLuck, 0)))
 
   const recap = h(
     'section',
-    { class: 'recap' },
+    { class: 'recap', id: 'news-recap', hidden: true },
     h('h2', null, isLong ? `크게 움직인 뉴스 (전체 ${market.news.length}개 중)` : '그때 나온 뉴스'),
     ...recapNews(market).map((n) => {
       const when = isLong ? calendarLabel(dayOf(market, n.at)) : `${Math.floor(n.at / TICKS_PER_SECOND)}초`
@@ -118,6 +160,18 @@ export function resultScreen(
       )
     }),
   )
+  const recapToggle = h(
+    'button',
+    { class: 'btn btn-text recap-toggle', 'aria-expanded': 'false', 'aria-controls': 'news-recap' },
+    '뉴스 다시 보기',
+  )
+  recapToggle.addEventListener('click', () => {
+    const open = recap.hidden
+    recap.hidden = !open
+    recapToggle.setAttribute('aria-expanded', String(open))
+    recapToggle.textContent = open ? '뉴스 접기' : '뉴스 다시 보기'
+  })
+
   const el = h(
     'main',
     { class: 'screen' },
@@ -167,7 +221,7 @@ export function resultScreen(
       // deposit rate is the benchmark investors actually use.
       isLong ? row('예금에만 넣었다면', result.cashReturn) : row('1초 단위로 완벽했다면', result.perfectReturn),
     ),
-    luckCard(market, result.held, (pct) => record && save.setLuck(record.id, pct)),
+    luckSlot,
     h(
       'p',
       { class: 'fine num' },
@@ -180,6 +234,7 @@ export function resultScreen(
       { class: 'fine num' },
       `매매 ${result.trades}번 · 수수료 ${formatWon(result.fees)} · 현금 이자 ${formatWon(result.interest)} · 보유 시간 ${heldPct}%`,
     ),
+    recapToggle,
     recap,
     h(
       'div',
@@ -191,7 +246,13 @@ export function resultScreen(
 
   return {
     el,
+    back() {
+      go({ name: 'home' })
+      return true
+    },
     destroy() {
+      luckCancelled = true
+      clearTimeout(luckTimer)
       window.removeEventListener('resize', draw)
       chart.destroy()
     },
