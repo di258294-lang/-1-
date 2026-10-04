@@ -1,6 +1,13 @@
+import { platform } from '#platform'
 import type { Market } from '../core/market'
 import { shareText } from '../core/share'
-import { toast } from './dom'
+
+/**
+ * The game's public link. Not location.origin: that drops the GitHub Pages
+ * sub-path on the web and is capacitor://localhost or https://localhost in
+ * the apps. The Toss build returns a toss.im link to the mini-app.
+ */
+export const shareUrl = () => platform.shareUrl()
 
 export async function shareResult(opts: {
   market: Market
@@ -14,25 +21,12 @@ export async function shareResult(opts: {
     market: opts.market,
     result: { yourReturn: opts.yourReturn, buyHoldReturn: opts.buyHoldReturn, held: opts.held },
     day: opts.day,
-    url: location.origin,
+    url: await shareUrl(),
   })
   await shareOut(text)
 }
 
-/** Native share sheet when available, otherwise copy to the clipboard. */
-export async function shareOut(text: string) {
-  try {
-    if (navigator.share) {
-      await navigator.share({ text })
-      return
-    }
-  } catch (err) {
-    if ((err as DOMException)?.name === 'AbortError') return
-  }
-  try {
-    await navigator.clipboard.writeText(text)
-    toast('결과를 복사했어요')
-  } catch {
-    toast('복사하지 못했어요')
-  }
+/** Share sheet when available, otherwise copy to the clipboard with a toast. */
+export function shareOut(text: string) {
+  return platform.share(text)
 }

@@ -1,5 +1,6 @@
-import { Capacitor } from '@capacitor/core'
-import { Haptics, ImpactStyle } from '@capacitor/haptics'
+import { platform } from '#platform'
+
+export { toast } from '../platform/toast'
 
 type Attrs = Record<string, string | number | boolean | EventListener | undefined>
 type Child = Node | string | null | undefined | false
@@ -41,33 +42,13 @@ export const icons = {
     '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M5.5 5.5l11 11m0-11l-11 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
 }
 
-const native = Capacitor.isNativePlatform()
-
-/** A short tap: Taptic Engine / vibrator in the apps, vibrate() on the web. */
+/**
+ * A short tap through the platform (Taptic Engine / vibrator in the apps,
+ * Toss haptics in the mini-app, vibrate() on the web). The number keeps the
+ * old call sites working: 10+ is a press, 6-9 a release, below that a tick.
+ */
 export function haptic(ms = 8) {
-  if (native) {
-    Haptics.impact({ style: ms >= 10 ? ImpactStyle.Medium : ImpactStyle.Light }).catch(() => {})
-    return
-  }
-  try {
-    navigator.vibrate?.(ms)
-  } catch {
-    // Not supported. Fine.
-  }
-}
-
-let toastEl: HTMLElement | null = null
-let toastTimer = 0
-
-export function toast(message: string) {
-  if (!toastEl) {
-    toastEl = h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' })
-    document.body.append(toastEl)
-  }
-  toastEl.textContent = message
-  toastEl.classList.add('show')
-  clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => toastEl?.classList.remove('show'), 1800)
+  platform.haptic(ms >= 10 ? 'press' : ms >= 6 ? 'release' : 'tick')
 }
 
 export function cssVar(name: string) {

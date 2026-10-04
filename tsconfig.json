@@ -10,7 +10,12 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "types": ["vite/client"],
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      // Type-checks against the web platform; vite.config.ts swaps in
+      // src/platform/toss.ts for `--mode toss`. Both export the same shape.
+      "#platform": ["./src/platform/web.ts"]
+    }
   },
   "include": ["src"]
 }
