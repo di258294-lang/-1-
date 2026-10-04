@@ -265,8 +265,10 @@ button {
   padding: 18px 18px 14px;
   flex: 1 1 auto;
   max-height: 400px;
-  /* Shrinks first on short phones so the start button stays on screen. */
+  /* Shrinks first on short phones so the start button stays on screen;
+     the chart shrinks with it (it redraws to its box) instead of spilling. */
   min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -301,7 +303,7 @@ button {
   display: block;
   width: 100%;
   flex: 1;
-  min-height: 72px;
+  min-height: 0;
   margin-top: 10px;
 }
 

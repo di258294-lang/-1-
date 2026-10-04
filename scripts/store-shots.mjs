@@ -45,7 +45,7 @@ const FRAMES = [
   { file: '1-hold', shot: 'hold', title: '누르는 동안만 들고 있어요', sub: '떼면 팔아요. 조작은 이게 전부.' },
   { file: '2-home', shot: 'home', title: '매일 0시, 모두에게 같은 차트 하나', sub: '하루 한 번, 40초.' },
   { file: '3-news', shot: 'news', title: '공식 발표는 믿고, 소문은 의심하고', sub: '소문은 반이 틀려요.' },
-  { file: '4-result', shot: 'result', title: '운일까 실력일까', sub: '아무 때나 누른 1,000판과 비교해요.' },
+  { file: '4-result', shot: 'result', title: '그냥 들고 있는 것보다 잘했을까', sub: '결과와 함께 고칠 미션을 하나씩 짚어줘요.' },
   { file: '5-habits', shot: 'habits', title: '40초면 매매 습관이 보여요', sub: '고칠 미션도 하나씩.' },
   { file: '6-challenge', shot: 'challenge', title: '친구에겐 도전장으로', sub: '같은 차트로 겨뤄요. 결과는 10칸으로 공유해요.' },
 ]
