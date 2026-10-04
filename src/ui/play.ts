@@ -3,7 +3,8 @@ import { formatPct, formatWon, formatWonDelta, direction } from '../core/format'
 import { analyzeRound, type RoundHabits } from '../core/habits'
 import { calendarLabel, dayOf, playPrice, TICKS_PER_SECOND, type Market } from '../core/market'
 import { PRODUCTS } from '../core/products'
-import { completeRound } from '../core/session'
+import { platform } from '#platform'
+import { completeRound, roundKind } from '../core/session'
 import { save } from '../core/storage'
 import { advanceTo, createRound, isOver, setHolding, START_EQUITY, summarize } from '../core/round'
 import { Coach, NEWS_SHOW_AFTER } from '../core/tutorial'
@@ -24,7 +25,10 @@ const WINDOW_DAYS = { short: 10, long: 15 }
 const COUNTDOWN_MS = 2400
 /** After any pause, a short count before time runs again, so pausing can't be used to study the chart. */
 const RESUME_MS = 1000
-/** How often a live daily round saves its progress, in play time. */
+/**
+ * How often a live daily round saves its progress, in play time. Cheap: a
+ * small live record, not the save (storage.progressDaily).
+ */
 const CHECKPOINT_MS = 1000
 
 /** Why the round is stopped. Time runs only while there are none. */
@@ -44,6 +48,8 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   const isLong = market.length === 'long'
   /** The first-launch guided round: coach lines, nothing recorded. */
   const tutorial = isTutorial(market)
+  /** What the round leaves behind is session.roundPolicy's call. */
+  const kind = roundKind(mode, { tutorial, challenge: isChallenge(market) })
   /** One tap buys, the next sells (settings). held[] means the same either way. */
   let tapToggle = false
   try {
@@ -215,7 +221,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
     renderPad()
   }
 
-  /** The result without saving it: the tutorial, or when saving failed. */
+  /** The result without saving it, when saving failed. */
   const unsavedResult = (): Parameters<Navigate>[0] => {
     if (round.holding) setHolding(round, false)
     advanceTo(round, playTicks)
@@ -237,26 +243,21 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
     // The same tone for every result: no win jingle.
     sfx.end()
     let route: Parameters<Navigate>[0]
-    if (tutorial) {
-      // A coached round is a lesson, not a record: it never enters the
-      // practice stats, unlocks or habit history. It does replace the intro.
-      try {
-        save.markIntroSeen()
-      } catch (err) {
-        logError(err, 'markIntroSeen')
+    try {
+      // Every kind goes through completeRound; its policy keeps tutorial,
+      // challenge and replay rounds out of the records.
+      route = { name: 'result', mode, market, ...completeRound(mode, market, round, { kind }) }
+    } catch (err) {
+      // Saving failed. The player still sees how the round went.
+      logError(err, 'completeRound')
+      if (kind === 'tutorial') {
+        try {
+          save.markIntroSeen()
+        } catch (e) {
+          logError(e, 'markIntroSeen')
+        }
       }
       route = unsavedResult()
-    } else if (isChallenge(market)) {
-      // A friend's chart: never in practice stats, unlocks or habit history.
-      route = unsavedResult()
-    } else {
-      try {
-        route = { name: 'result', mode, market, ...completeRound(mode, market, round) }
-      } catch (err) {
-        // Saving failed. The player still sees how the round went.
-        logError(err, 'completeRound')
-        route = unsavedResult()
-      }
     }
     go(route)
   }
@@ -284,6 +285,14 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
     })
   }
 
+  const modeLabel = () => {
+    if (mode.kind === 'daily') return `오늘의 차트 #${mode.day}`
+    if (kind === 'tutorial') return '처음 연습'
+    if (kind === 'challenge') return '친구 도전'
+    if (kind === 'replay') return '지난 차트'
+    return isLong ? '장기 모드 · 1년' : '연습'
+  }
+
   const el = h(
     'main',
     { class: 'play' },
@@ -299,7 +308,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
       h(
         'p',
         { class: 'equity-label' },
-        `${mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : tutorial ? '처음 연습' : isChallenge(market) ? '친구 도전' : isLong ? '장기 모드 · 1년' : '연습'} · ${product.name} · 가상 돈`,
+        `${modeLabel()} · ${product.name} · 가상 돈`,
       ),
       equity,
       delta,
@@ -360,6 +369,13 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   const onBlur = () => pause('blur')
   const onFocus = () => unpause('blur')
   const onPageHide = () => checkpoint()
+  // A browser tab closing or reloading mid-daily would spend the day: ask first.
+  const onBeforeUnload = (e: BeforeUnloadEvent) => {
+    if (mode.kind !== 'daily' || phase !== 'live') return
+    checkpoint()
+    e.preventDefault()
+    e.returnValue = ''
+  }
 
   pad.addEventListener('pointerdown', onDown)
   pad.addEventListener('pointerup', onUp)
@@ -372,7 +388,10 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   window.addEventListener('blur', onBlur)
   window.addEventListener('focus', onFocus)
   window.addEventListener('pagehide', onPageHide)
+  window.addEventListener('beforeunload', onBeforeUnload)
   document.addEventListener('visibilitychange', onVisibility)
+  // An iOS edge swipe must not leave mid-round (Toss); back is the quit sheet.
+  platform.setSwipeBack(false)
 
   let shownNews = -1
   let shownCoach: string | null = null
@@ -422,10 +441,13 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   const goLive = (): boolean => {
     if (mode.kind === 'daily') {
       // Another tab, or a stale screen, already played today's chart.
-      // startDaily re-reads storage and refuses if any entry exists.
+      // startDaily re-reads storage and refuses if any entry exists, or if
+      // the round could not be recorded.
       if (!save.startDaily(mode.key, playPrice(market, playTicks) / playPrice(market, 0) - 1)) {
         phase = 'done'
-        toast('오늘 차트는 이미 했어요')
+        // Or it could not be recorded: playing it would let a reload replay it.
+        const unsaved = save.readOnly() || save.lastWriteFailed()
+        toast(unsaved ? '기록을 저장할 수 없어서 오늘 차트를 시작하지 않았어요' : '오늘 차트는 이미 했어요')
         go({ name: 'home' })
         return false
       }
@@ -520,7 +542,9 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
       window.removeEventListener('blur', onBlur)
       window.removeEventListener('focus', onFocus)
       window.removeEventListener('pagehide', onPageHide)
+      window.removeEventListener('beforeunload', onBeforeUnload)
       document.removeEventListener('visibilitychange', onVisibility)
+      platform.setSwipeBack(true)
     },
   }
 }

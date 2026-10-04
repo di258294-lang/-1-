@@ -13,6 +13,13 @@ export type Settings = {
   haptics: boolean
   /** Tap once to buy, tap again to sell, instead of press-and-hold. */
   tapToggle: boolean
+  /** The name put on challenge links ('' for none); always passes challenge.cleanName. */
+  nick: string
 }
 
-export const DEFAULT_SETTINGS: Settings = { sound: true, haptics: true, tapToggle: false }
+/** The on/off settings (the switches in the settings sheet). */
+export type ToggleKey = { [K in keyof Settings]: Settings[K] extends boolean ? K : never }[keyof Settings]
+
+export const TOGGLE_KEYS: readonly ToggleKey[] = ['sound', 'haptics', 'tapToggle']
+
+export const DEFAULT_SETTINGS: Settings = { sound: true, haptics: true, tapToggle: false, nick: '' }

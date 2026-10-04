@@ -6,9 +6,14 @@ import { loadEnv } from 'vite'
 // .env.toss (VITE_AIT_APP_NAME) so the app's intoss:// share links match.
 // The display name and icon are managed in the console, not here.
 const env = loadEnv('toss', process.cwd(), 'VITE_')
+const appName = env.VITE_AIT_APP_NAME?.trim() ?? ''
+// A placeholder name would ship intoss://TODO share links: refuse to build.
+if (!appName || /^todo/i.test(appName)) {
+  throw new Error(`apps-in-toss.config.ts: set VITE_AIT_APP_NAME in .env.toss to the console appName (now "${appName}")`)
+}
 
 export default defineConfig({
-  appName: env.VITE_AIT_APP_NAME || 'TODO-appName',
+  appName,
   brand: {
     primaryColor: '#111418',
   },
