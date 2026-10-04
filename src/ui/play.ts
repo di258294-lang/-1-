@@ -401,13 +401,18 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
 
   let shownNews = -1
   let shownCoach: string | null = null
+  let shownReveal = false
   const updateNews = (tick: number) => {
     const idx = market.news.findIndex((n) => tick >= n.at && tick < n.impactAt + NEWS_SHOW_AFTER)
     const line = coach ? coach.line(tick, round.holding) : null
-    if (idx === shownNews && line === shownCoach) return
+    // Once the price has moved, a rumor's banner says whether it was true,
+    // so a "좋다는 얘기" followed by a drop is explained on the spot.
+    const reveal = idx >= 0 && market.news[idx].kind === 'rumor' && tick >= market.news[idx].impactAt
+    if (idx === shownNews && line === shownCoach && reveal === shownReveal) return
     const fresh = idx !== shownNews
     shownNews = idx
     shownCoach = line
+    shownReveal = reveal
     if (idx < 0 && !line) {
       news.classList.remove('show')
       return
@@ -422,8 +427,13 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
       news.classList.remove('coach-only')
       newsTag.textContent = newsKindLabel(market.product, n.kind)
       newsTag.className = `news-tag ${n.kind}`
-      toneTag.textContent = newsToneLabel(n)
-      toneTag.className = `news-tone ${n.implied > 0 ? 'up' : 'down'}`
+      if (reveal) {
+        toneTag.textContent = n.actual === n.implied ? '맞은 소문이었어요' : '틀린 소문이었어요'
+        toneTag.className = `news-tone ${n.actual > 0 ? 'up' : 'down'}`
+      } else {
+        toneTag.textContent = newsToneLabel(n)
+        toneTag.className = `news-tone ${n.implied > 0 ? 'up' : 'down'}`
+      }
       newsText.textContent = n.blindHeadline
       coachText.textContent = line ?? ''
       if (fresh) {

@@ -16,9 +16,11 @@ export function newsKindLabel(product: ProductKey, kind: NewsEvent['kind']) {
 /**
  * Whether the headline sounds good or bad for the price. Uses what the
  * headline implies, never what happened: a rumor can be wrong, and that is
- * the lesson.
+ * the lesson. A rumor is only "좋다는 얘기": calling it 좋은 소식 read as a
+ * promise, and players were surprised when a false one sent the price down.
  */
-export function newsToneLabel(news: Pick<NewsEvent, 'implied'>) {
+export function newsToneLabel(news: Pick<NewsEvent, 'implied' | 'kind'>) {
+  if (news.kind === 'rumor') return news.implied > 0 ? '좋다는 얘기' : '나쁘다는 얘기'
   return news.implied > 0 ? '좋은 소식' : '나쁜 소식'
 }
 
