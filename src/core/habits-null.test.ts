@@ -293,8 +293,8 @@ function expectHonest(h: RoundHabits, ins: { title: string; line: string; habit?
     expect(nums[1]).toBeLessThanOrEqual(nums[0])
     expect(nums[1]).toBeGreaterThan(0)
   }
-  if (ins.title === '공시에 빠르게 반응했어요') expect(nums[1]).toBeLessThanOrEqual(nums[0])
-  if (ins.title === '손절이 빨랐어요') expect(f.lossTrades).toBeGreaterThan(0)
+  if (ins.title === '공식 발표에 빠르게 반응했어요') expect(nums[1]).toBeLessThanOrEqual(nums[0])
+  if (ins.title === '손실을 빨리 정리했어요') expect(f.lossTrades).toBeGreaterThan(0)
 }
 
 describe('scripted habits', () => {
