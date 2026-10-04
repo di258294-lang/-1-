@@ -39,6 +39,11 @@ export type SeasonSummary = {
    * the simulated trading days those rounds covered (20 per daily round).
    */
   cash: number
+  /**
+   * Every daily this season so far, abandoned ones included: they move the
+   * account, so screens gate "has this month started" on this, not on days.
+   */
+  entries: number
   /** Finished (not abandoned) rounds so far this season. */
   days: number
   /** Finished rounds that beat that day's buy and hold. */
@@ -89,6 +94,7 @@ export function seasonSummary(daily: Record<string, Entry>, key: string): Season
     accountReturn: account / SEASON_START - 1,
     market: market - 1,
     cash: (1 + CASH_RATE_ANNUAL) ** (tradingDays / TRADING_DAYS_PER_YEAR) - 1,
+    entries: keys.length,
     days,
     beatDays,
   }

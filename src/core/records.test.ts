@@ -62,6 +62,7 @@ describe('season summary', () => {
     expect(s.market).toBeCloseTo(1.05 * 1.01 * 0.96 - 1)
     // The abandoned day moves the account and the ghosts, but is not a day played.
     expect(s.days).toBe(2)
+    expect(s.entries).toBe(3)
     expect(s.beatDays).toBe(1)
     expect(s.cash).toBeCloseTo((1 + CASH_RATE_ANNUAL) ** ((3 * DAILY_ROUND_TRADING_DAYS) / 252) - 1)
     // Mid-season: only days so far.
@@ -70,7 +71,14 @@ describe('season summary', () => {
 
   it('is flat for a season with no days', () => {
     const s = seasonSummary({}, '2026-10-15')
-    expect(s).toMatchObject({ account: SEASON_START, accountReturn: 0, market: 0, cash: 0, days: 0, beatDays: 0 })
+    expect(s).toMatchObject({ account: SEASON_START, accountReturn: 0, market: 0, cash: 0, entries: 0, days: 0, beatDays: 0 })
+  })
+
+  it('counts a month with only an abandoned day as started (qa3 P2-8)', () => {
+    const s = seasonSummary({ '2026-10-05': entry(0.03, 0.01, { abandoned: true, trades: 0 }) }, '2026-10-15')
+    expect(s).toMatchObject({ entries: 1, days: 0, beatDays: 0 })
+    expect(s.account).toBeCloseTo(SEASON_START * 1.03)
+    expect(s.market).toBeCloseTo(0.01)
   })
 })
 

@@ -618,6 +618,167 @@ describe('live checkpoint', () => {
   })
 })
 
+describe('live checkpoint safety (qa3 P2-6b, P2-7)', () => {
+  const key = '2026-10-05'
+
+  it("another tab's checkpoint is read even when the save text did not change", () => {
+    const backend = memoryBackend()
+    const a = createStore(backend)
+    const b = createStore(backend)
+    a.startDaily(key, 0.03)
+    b.invalidate() // A's placeholder write
+    expect(b.daily(key)).toMatchObject({ yourReturn: 0, abandoned: true })
+    a.progressDaily(key, { yourReturn: 0.044, held: [true, true] })
+    b.invalidate() // the storage event for LIVE_KEY
+    expect(b.daily(key)).toMatchObject({ yourReturn: 0.044, held: [true, true], abandoned: true })
+    a.progressDaily(key, { yourReturn: 0.05, held: [true, true, true] })
+    b.invalidate()
+    expect(b.daily(key)?.yourReturn).toBe(0.05)
+  })
+
+  it('keeps the checkpoint until the final result is written', () => {
+    let full = false
+    const order: string[] = []
+    const backend = memoryBackend(
+      null,
+      (s) => {
+        if (full) throw new Error('QuotaExceededError')
+        order.push(JSON.parse(s).daily?.[key]?.abandoned ? 'save:placeholder' : 'save')
+      },
+      undefined,
+      { write: (s) => void order.push(s === null ? 'rm live' : 'live') },
+    )
+    const store = createStore(backend)
+    store.startDaily(key, 0.03)
+    store.progressDaily(key, { yourReturn: 0.02, held: [true] })
+    order.length = 0
+    store.batch(() => {
+      expect(store.recordDaily(key, finished({ yourReturn: 0.07 }))).toBe(true)
+      // Inside the batch nothing is written yet, so the checkpoint stays.
+      expect(backend.peekLive()).not.toBeNull()
+      store.recordPractice(0, 0)
+    })
+    expect(order).toEqual(['save', 'rm live'])
+    expect(backend.peekLive()).toBeNull()
+
+    // The final write fails: the checkpoint is still there for a reload.
+    const day2 = '2026-10-06'
+    store.startDaily(day2, 0.01)
+    store.progressDaily(day2, { yourReturn: -0.03, held: [true] })
+    full = true
+    store.batch(() => store.recordDaily(day2, finished({ yourReturn: 0.01 })))
+    expect(store.lastWriteFailed()).toBe(true)
+    expect(parseLive(backend.peekLive())).toMatchObject({ key: day2, yourReturn: -0.03 })
+    // The next write that lands carries the result, then the checkpoint goes.
+    full = false
+    store.markIntroSeen()
+    expect(stored(backend).daily[day2]).toMatchObject({ yourReturn: 0.01 })
+    expect(backend.peekLive()).toBeNull()
+  })
+
+  it('removes the checkpoint only after an async save resolves', async () => {
+    let resolve = () => {}
+    const backend = memoryBackend(null, (s) =>
+      JSON.parse(s).daily?.[key]?.abandoned ? undefined : new Promise<void>((r) => (resolve = r)),
+    )
+    const store = createStore(backend)
+    store.startDaily(key, 0.03)
+    store.progressDaily(key, { yourReturn: 0.02, held: [true] })
+    store.recordDaily(key, finished())
+    await Promise.resolve()
+    expect(backend.peekLive()).not.toBeNull()
+    resolve()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(backend.peekLive()).toBeNull()
+  })
+
+  it('falls back to the save when the live slot cannot be written', () => {
+    const backend = memoryBackend(null, undefined, undefined, {
+      write: (s) => {
+        if (s !== null) throw new Error('QuotaExceededError')
+      },
+    })
+    const store = createStore(backend)
+    store.startDaily(key, 0.03)
+    store.progressDaily(key, { yourReturn: 0.04, held: [true, false] })
+    expect(stored(backend).daily[key]).toMatchObject({ yourReturn: 0.04, abandoned: true })
+    expect(store.lastWriteFailed()).toBe(false)
+  })
+
+  it('falls back to the save when an async live write rejects', async () => {
+    const backend = memoryBackend(null, undefined, undefined, { write: () => Promise.reject(new Error('native')) })
+    const store = createStore(backend)
+    store.startDaily(key, 0.03)
+    store.progressDaily(key, { yourReturn: 0.04, held: [true] })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(stored(backend).daily[key]).toMatchObject({ yourReturn: 0.04, abandoned: true })
+  })
+})
+
+describe('canRecord (qa3 P2-9)', () => {
+  it('is true for a readable, writable, current save', () => {
+    expect(setup().store.canRecord()).toBe(true)
+  })
+
+  it('is false for a save from a newer version', () => {
+    expect(setup(JSON.stringify({ v: SAVE_VERSION + 1, seenIntro: true })).store.canRecord()).toBe(false)
+  })
+
+  it('is false while storage cannot be read, and true once it can', () => {
+    let blocked = true
+    const store = createStore({
+      read: () => {
+        if (blocked) throw new Error('SecurityError')
+        return null
+      },
+      write: () => {},
+    })
+    expect(store.canRecord()).toBe(false)
+    expect(store.blind()).toBe(true)
+    blocked = false
+    expect(store.canRecord()).toBe(true)
+    expect(store.blind()).toBe(false)
+  })
+
+  it('is false after a failed write, until one succeeds', () => {
+    let full = true
+    const store = createStore(
+      memoryBackend(null, () => {
+        if (full) throw new Error('QuotaExceededError')
+      }),
+    )
+    store.recordPractice(0, 0)
+    expect(store.canRecord()).toBe(false)
+    full = false
+    store.recordPractice(0, 0)
+    expect(store.canRecord()).toBe(true)
+  })
+})
+
+describe('intro seen with storage that cannot be read', () => {
+  it('stays seen for the session, and is stored once storage works', () => {
+    let blocked = true
+    let mem: string | null = null
+    const store = createStore({
+      read: () => {
+        if (blocked) throw new Error('SecurityError')
+        return mem
+      },
+      write: (s) => void (mem = s),
+    })
+    expect(store.seenIntro()).toBe(false)
+    store.markIntroSeen()
+    expect(store.seenIntro()).toBe(true)
+    expect(mem).toBeNull()
+    // Storage answers again (a stale read goes back to it): still seen.
+    blocked = false
+    store.invalidate()
+    expect(store.seenIntro()).toBe(true)
+    store.recordPractice(0, 0)
+    expect(JSON.parse(mem!).seenIntro).toBe(true)
+  })
+})
+
 describe('a daily that cannot be recorded', () => {
   it('is not started when the placeholder write fails', () => {
     const store = createStore(

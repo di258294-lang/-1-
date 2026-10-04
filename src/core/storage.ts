@@ -538,7 +538,12 @@ export function blindBackend(): StorageBackend {
 
 const isPromise = (x: unknown): x is Promise<unknown> => isObj(x) && typeof (x as { then?: unknown }).then === 'function'
 
-type Snapshot = { raw: string | null; file: SaveFile; readOnly: boolean }
+/**
+ * `live` is the live checkpoint text folded into `file` (undefined: not read
+ * yet), so a checkpoint another tab wrote is picked up even when the save
+ * text itself did not change.
+ */
+type Snapshot = { raw: string | null; file: SaveFile; readOnly: boolean; live?: string | null }
 
 export function createStore(backend: StorageBackend) {
   /**
@@ -551,6 +556,19 @@ export function createStore(backend: StorageBackend) {
   /** The backend could not be read: play from memory, never overwrite blind. */
   let blind = false
   let writeFailed = false
+  /**
+   * The intro was finished in this session. Kept apart from the file so it
+   * survives a save that can't be read or written (blocked storage): the
+   * tutorial runs once per session at most, and the next write that lands
+   * stores it. A new backend (invalidate(true)) starts over.
+   */
+  let introSeen = false
+  /**
+   * A finished daily's live checkpoint waits to be removed until the save
+   * holding the final result is written: the checkpoint stays the fallback
+   * if that write fails or the app dies between the two.
+   */
+  let clearLivePending = false
   /** Set inside batch(): changes collect here and are written once at the end. */
   let batching: { snap: Snapshot; dirty: boolean } | null = null
   /** Daily keys whose placeholder this store instance (session) created. */
@@ -570,7 +588,21 @@ export function createStore(backend: StorageBackend) {
       return (cache ??= { raw: null, file: emptySave(), readOnly: false })
     }
     stale = false
-    if (cache && cache.raw === raw) return cache
+    let liveRaw: string | null = null
+    try {
+      liveRaw = backend.readLive?.() ?? null
+    } catch {
+      // No live checkpoint to read.
+    }
+    if (cache && cache.raw === raw) {
+      // Same save text, but another tab may have checkpointed its round.
+      if (cache.live !== liveRaw) {
+        foldLive(cache.file, parseLive(liveRaw))
+        cache.live = liveRaw
+      }
+      if (introSeen) cache.file.seenIntro = true
+      return cache
+    }
     const loaded = parseSave(raw)
     if (loaded.backup && raw) {
       try {
@@ -579,12 +611,9 @@ export function createStore(backend: StorageBackend) {
         // Nowhere to put it; the repaired file is still better than a white screen.
       }
     }
-    try {
-      foldLive(loaded.file, parseLive(backend.readLive?.() ?? null))
-    } catch {
-      // No live checkpoint to read.
-    }
-    cache = { raw, file: loaded.file, readOnly: loaded.readOnly }
+    foldLive(loaded.file, parseLive(liveRaw))
+    if (introSeen) loaded.file.seenIntro = true
+    cache = { raw, file: loaded.file, readOnly: loaded.readOnly, live: liveRaw }
     return cache
   }
 
@@ -609,8 +638,9 @@ export function createStore(backend: StorageBackend) {
     try {
       const result = backend.write(text)
       writeFailed = false
-      cache = { raw: text, file: snap.file, readOnly: false }
-      if (isPromise(result)) result.catch(() => (writeFailed = true))
+      cache = { raw: text, file: snap.file, readOnly: false, live: snap.live }
+      if (isPromise(result)) result.then(afterSave, () => (writeFailed = true))
+      else afterSave()
     } catch {
       // Full or blocked storage. Keep the change in memory against the old
       // raw text, so this session still sees it and the next write retries.
@@ -633,13 +663,31 @@ export function createStore(backend: StorageBackend) {
     if (change(snap.file)) commit(snap)
   }
 
-  function writeLive(text: string | null): boolean {
+  /** The save just written holds every finished daily: drop a checkpoint that waited for it. */
+  function afterSave() {
+    // A new round already checkpointing (past midnight) keeps its own record.
+    if (!clearLivePending || live.size > 0) return
+    clearLivePending = false
+    writeLive(null)
+  }
+
+  /**
+   * Writes (or with null removes) the live checkpoint. False when there is no
+   * live slot or the write threw; `onFail` also runs when an async write
+   * rejects later, so the caller can put the checkpoint somewhere else.
+   */
+  function writeLive(text: string | null, onFail?: () => void): boolean {
     if (!backend.writeLive) return false
+    const failed = () => {
+      writeFailed = true
+      onFail?.()
+    }
     try {
       const result = backend.writeLive(text)
-      if (isPromise(result)) result.catch(() => (writeFailed = true))
+      if (isPromise(result)) result.catch(failed)
     } catch {
       writeFailed = true
+      return false
     }
     return true
   }
@@ -711,6 +759,9 @@ export function createStore(backend: StorageBackend) {
         const existing = f.daily[key]
         if (existing && !(existing.abandoned && live.has(key))) return false
         f.daily[key] = { ...entry, held: encodeHeld(entry.held) }
+        // Our own checkpoint goes once this result is written (afterSave),
+        // not before: inside a batch that is at the batch's end.
+        if (live.delete(key)) clearLivePending = true
         // Finishing our own round in a month another tab already closed: the
         // archive took the checkpoint, so take the final result instead.
         // (Any other late entry leaves a closed month alone.)
@@ -718,7 +769,6 @@ export function createStore(backend: StorageBackend) {
         if (existing && f.seasons[season]) f.seasons[season] = archiveSeason(f.daily, season)
         return (saved = true)
       })
-      if (saved && live.delete(key)) writeLive(null)
       return saved
     },
     /**
@@ -735,13 +785,17 @@ export function createStore(backend: StorageBackend) {
       // This session sees it at once.
       snap.file.daily[key] = { ...entry, yourReturn: checkpoint.yourReturn, held: checkpoint.held }
       if (snap.readOnly || blind) return
-      if (!writeLive(JSON.stringify(checkpoint))) {
-        // No live slot: into the save itself (the whole file, so it costs more).
+      // No live slot, or it could not be written (full storage): into the
+      // save itself (the whole file, so it costs more).
+      const intoSave = () => {
+        if (!live.has(key)) return
         mutate((f) => {
+          // Usually already folded into this session's copy: write it anyway.
           foldLive(f, checkpoint)
-          return true
+          return f.daily[key]?.abandoned === true
         })
       }
+      if (!writeLive(JSON.stringify(checkpoint), intoSave)) intoSave()
     },
     /** `trades` decides whether the round counts toward unlocks. */
     recordPractice(yourReturn: number, trades: number) {
@@ -858,13 +912,16 @@ export function createStore(backend: StorageBackend) {
       return PRODUCT_ORDER.filter((k) => store.isUnlocked(k))
     },
     seenIntro() {
-      return file().seenIntro
+      return introSeen || file().seenIntro
     },
     markIntroSeen() {
       mutate((f) => {
         if (f.seenIntro) return false
         return (f.seenIntro = true)
       })
+      // After the write: from here every load keeps it set, so it lands in
+      // the next write if this one could not.
+      introSeen = true
     },
     getSettings(): Settings {
       return { ...file().settings }
@@ -962,6 +1019,21 @@ export function createStore(backend: StorageBackend) {
     readOnly() {
       return current().readOnly
     },
+    /** True while the save can't be read (blocked storage, or not loaded yet): nothing is written. */
+    blind() {
+      current()
+      return blind
+    },
+    /**
+     * Whether a round played now would be kept: the save can be read, is not
+     * from a newer version, and the last write went through. A fresh read,
+     * so storage that became readable again counts at once. Home offers the
+     * daily chart only when this is true.
+     */
+    canRecord(): boolean {
+      const snap = load()
+      return !snap.readOnly && !blind && !writeFailed
+    },
     /**
      * Another tab wrote (or the backend was swapped): the next read goes back
      * to the backend, and subscribers are told. `reset` also forgets the
@@ -973,6 +1045,8 @@ export function createStore(backend: StorageBackend) {
         cache = null
         writeFailed = false
         blind = false
+        introSeen = false
+        clearLivePending = false
       }
       for (const fn of listeners) fn()
     },
@@ -1145,6 +1219,8 @@ export async function hydrateAsync(
 // screens can re-render through save.onChange.
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
   window.addEventListener('storage', (e) => {
-    if (e.key === null || e.key === SAVE_KEY) save.invalidate()
+    // The live checkpoint too: another tab's running daily shows its latest
+    // result here, not the 0% placeholder.
+    if (e.key === null || e.key === SAVE_KEY || e.key === LIVE_KEY) save.invalidate()
   })
 }
