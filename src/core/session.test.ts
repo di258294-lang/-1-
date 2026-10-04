@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { generateMarket, type Market } from './market'
 import { advanceTo, createRound, setHolding } from './round'
-import { coachingFor, completeRound, roundKind, roundPolicy } from './session'
+import { coachingFor, completeRound, longestHold, roundKind, roundPolicy, TUTORIAL_HOLD_TICKS } from './session'
 import { createStore, configureStorage, memoryBackend, save } from './storage'
 
 /** Holds one long stretch: passes the starter mission (hold a quarter of the round). */
@@ -106,6 +106,37 @@ describe('completeRound coaching', () => {
     expect(save.practice().rounds).toBe(0)
     expect(save.habitRecords()).toHaveLength(0)
     expect(save.coach().active).toBeNull()
+  })
+
+  it("doesn't end the intro when the tutorial had no real hold (qa3 P2-2)", () => {
+    const m = generateMarket(8)
+    // Never touched.
+    completeRound(practice, m, createRound(m), { kind: 'tutorial' })
+    expect(save.seenIntro()).toBe(false)
+    // Only taps, each shorter than the bar.
+    const taps = createRound(m)
+    for (let i = 0; i < 5; i++) {
+      advanceTo(taps, 10 + i * 30)
+      setHolding(taps, true)
+      advanceTo(taps, 10 + i * 30 + TUTORIAL_HOLD_TICKS - 1)
+      setHolding(taps, false)
+    }
+    completeRound(practice, m, taps, { kind: 'tutorial' })
+    expect(save.seenIntro()).toBe(false)
+    // One hold of exactly 1.5 s is enough.
+    const held = createRound(m)
+    advanceTo(held, 10)
+    setHolding(held, true)
+    advanceTo(held, 10 + TUTORIAL_HOLD_TICKS)
+    setHolding(held, false)
+    completeRound(practice, m, held, { kind: 'tutorial' })
+    expect(save.seenIntro()).toBe(true)
+  })
+
+  it('measures the longest unbroken hold', () => {
+    expect(TUTORIAL_HOLD_TICKS).toBe(15)
+    expect(longestHold([])).toBe(0)
+    expect(longestHold([false, true, true, false, true, true, true, false])).toBe(3)
   })
 
   it("records nothing at all for a friend's challenge", () => {

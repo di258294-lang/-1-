@@ -235,12 +235,18 @@ export function recordsScreen(go: Navigate): Screen {
     days: season.days,
     beatDays: season.beatDays,
   }
+  // An abandoned day moves the account too, so it starts the month (qa3 P2-8).
+  const seasonCardDetail = (x: typeof season) => {
+    const left = x.entries - x.days
+    if (!left) return seasonDetail(seasonLine)
+    return `예금 ${formatPct(x.cash, 2)} · 참여 ${x.days}일 · 중간에 나감 ${left}일${x.days ? ` · 시장 이긴 날 ${x.beatDays}일` : ''}`
+  }
   const seasonCard = h(
     'section',
     { class: 'habit-card' },
     h('p', { class: 'habit-kicker' }, `${season.label} · 끝까지 ${seasonDaysLeft(today)}일`),
-    h('h2', { class: 'habit-title num' }, season.days ? seasonVersus(seasonLine) : formatWon(season.account)),
-    h('p', { class: 'habit-line num' }, season.days ? seasonDetail(seasonLine) : '이번 달 오늘의 차트를 하면 계좌가 움직여요.'),
+    h('h2', { class: 'habit-title num' }, season.entries ? seasonVersus(seasonLine) : formatWon(season.account)),
+    h('p', { class: 'habit-line num' }, season.entries ? seasonCardDetail(season) : '이번 달 오늘의 차트를 하면 계좌가 움직여요.'),
     h('p', { class: 'fine' }, `${SEASON_RULE} ${MEDAL_RULE}`),
   )
 

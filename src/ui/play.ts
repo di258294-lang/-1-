@@ -4,7 +4,7 @@ import { analyzeRound, type RoundHabits } from '../core/habits'
 import { calendarLabel, dayOf, playPrice, TICKS_PER_SECOND, type Market } from '../core/market'
 import { PRODUCTS } from '../core/products'
 import { platform } from '#platform'
-import { completeRound, roundKind } from '../core/session'
+import { completeRound, longestHold, roundKind, TUTORIAL_HOLD_TICKS } from '../core/session'
 import { onDailyRecorded } from './reach'
 import { save } from '../core/storage'
 import { advanceTo, createRound, isOver, setHolding, START_EQUITY, summarize } from '../core/round'
@@ -253,7 +253,8 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
     } catch (err) {
       // Saving failed. The player still sees how the round went.
       logError(err, 'completeRound')
-      if (kind === 'tutorial') {
+      // Same bar as completeRound: only a real hold finishes the tutorial.
+      if (kind === 'tutorial' && longestHold(round.held) >= TUTORIAL_HOLD_TICKS) {
         try {
           save.markIntroSeen()
         } catch (e) {

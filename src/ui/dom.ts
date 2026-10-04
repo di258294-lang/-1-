@@ -71,11 +71,12 @@ export function cssVar(name: string) {
 
 /**
  * One quiet line when the save can't be written (QA #3): the browser's
- * storage is full or blocked, or the save came from a newer version.
+ * storage is full or blocked (unreadable included, before any write has
+ * failed), or the save came from a newer version.
  */
 export function storageWarning(): HTMLElement | null {
   try {
-    if (!save.lastWriteFailed() && !save.readOnly()) return null
+    if (save.canRecord()) return null
   } catch {
     // Can't even ask: say so.
   }

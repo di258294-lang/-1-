@@ -72,17 +72,40 @@ export function openSheet(
   return () => removeSheet(entry, true)
 }
 
+const closedListeners = new Set<() => void>()
+
 function removeSheet(entry: OpenSheet, restoreFocus: boolean) {
   const i = stack.indexOf(entry)
   if (i < 0) return false
   stack.splice(i, 1)
   entry.scrim.remove()
   if (restoreFocus && entry.returnFocus?.isConnected) entry.returnFocus.focus({ preventScroll: true })
+  // The player closed the last sheet (not the router clearing them).
+  if (restoreFocus && stack.length === 0) {
+    for (const fn of [...closedListeners]) {
+      try {
+        fn()
+      } catch {
+        // A listener's failure must not keep the sheet open.
+      }
+    }
+  }
   return true
 }
 
 export function anySheetOpen() {
   return stack.length > 0
+}
+
+/**
+ * Runs `fn` each time the last open sheet is closed by the player (button,
+ * Esc, back, scrim), never when navigation clears them. Screens use it to
+ * catch up on work they put off while a sheet was open. Returns an
+ * unsubscribe function.
+ */
+export function onSheetsClosed(fn: () => void): () => void {
+  closedListeners.add(fn)
+  return () => closedListeners.delete(fn)
 }
 
 /** Dismisses the topmost sheet as if cancelled. False when none is open. */

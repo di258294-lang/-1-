@@ -5,6 +5,7 @@ import { advanceMission, roundMetrics, type MissionOutcome } from './missions'
 import type { ProductKey } from './products'
 import { setHolding, advanceTo, summarize, type Round, type RoundResult } from './round'
 import { dateKey } from './daily'
+import { TICKS_PER_SECOND } from './market'
 import { save } from './storage'
 import type { Mode } from './types'
 
@@ -41,7 +42,7 @@ export type RoundPolicy = {
   lesson: boolean
   /** That lesson counts as seen, so it is not shown again. */
   markLesson: boolean
-  /** Finishing it marks the first-launch tutorial done. */
+  /** Finishing it marks the first-launch tutorial done, if it had a real hold (TUTORIAL_HOLD_TICKS). */
   finishesIntro: boolean
 }
 
@@ -51,6 +52,7 @@ export type RoundPolicy = {
  *   replay           a known chart: nothing recorded, a lesson but not
  *                    marked seen (it stays for a real round)
  *   tutorial         a guided lesson: nothing recorded, ends the intro
+ *                    (only after a real hold of 1.5 s or more)
  *   challenge        a friend's chart: nothing recorded at all
  */
 export function roundPolicy(kind: RoundKind): RoundPolicy {
@@ -65,6 +67,24 @@ export function roundPolicy(kind: RoundKind): RoundPolicy {
     case 'challenge':
       return { record: false, coach: false, lesson: false, markLesson: false, finishesIntro: false }
   }
+}
+
+/**
+ * The tutorial only counts as done after one real hold of this long: a
+ * player who never pressed, or only tapped, has not learned the control and
+ * gets the tutorial again before the irreversible daily chart.
+ */
+export const TUTORIAL_HOLD_TICKS = Math.round(1.5 * TICKS_PER_SECOND)
+
+/** Longest unbroken hold, in ticks. */
+export function longestHold(held: readonly boolean[]): number {
+  let best = 0
+  let run = 0
+  for (const x of held) {
+    run = x ? run + 1 : 0
+    if (run > best) best = run
+  }
+  return best
 }
 
 /** The round kind from the mode plus what only the screens know (tutorial or challenge market). */
@@ -113,7 +133,7 @@ export function completeRound(mode: Mode, market: Market, round: Round, opts: Co
 
   const outcome = save.batch((): RoundOutcome => {
     const unlockedBefore = save.unlockedProducts()
-    if (policy.finishesIntro) save.markIntroSeen()
+    if (policy.finishesIntro && longestHold(result.held) >= TUTORIAL_HOLD_TICKS) save.markIntroSeen()
 
     let counts = policy.record
     if (mode.kind === 'daily') {
