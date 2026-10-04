@@ -9,8 +9,8 @@ import { showIntro } from './intro'
  * The first-launch guided round. It runs through the ordinary play route
  * (practice mode), so app.ts and main.ts need no new route: the market object
  * itself is the flag. play.ts asks isTutorial(market) and, when true, shows
- * coach lines, keeps the round out of the records, and marks the tutorial
- * done (save.markIntroSeen) when it finishes.
+ * coach lines and finishes the round as kind 'tutorial': session.ts keeps
+ * it out of the records and marks the tutorial done (save.markIntroSeen).
  */
 const tutorials = new WeakSet<Market>()
 
