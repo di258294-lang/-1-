@@ -1,6 +1,8 @@
 import {
   Device,
+  Game,
   graniteEvent,
+  Review,
   SafeArea,
   Screen,
   Share,
@@ -8,7 +10,7 @@ import {
   type HapticFeedbackType,
 } from '@apps-in-toss/web-framework'
 import { copyWithToast } from './toast'
-import type { HapticKind, Platform } from './types'
+import type { HapticKind, Platform, PlatformLeaderboard } from './types'
 
 /**
  * Apps in Toss (WebView mini-app, SDK 3.x). Only `vite build --mode toss`
@@ -56,6 +58,54 @@ const local = {
 }
 
 let linkCache: Promise<string> | null = null
+
+/** isSupported() of an SDK call, false when the bridge itself is missing. */
+function can(fn: unknown): boolean {
+  try {
+    const check = (fn as { isSupported?: () => boolean } | undefined)?.isSupported
+    return typeof fn === 'function' && (typeof check !== 'function' || check() !== false)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The Toss game center leaderboard (SDK 3.x `Game.setLeaderboardScore` /
+ * `Game.openLeaderboard`, the successors of submitGameCenterLeaderBoardScore /
+ * openGameCenterLeaderboard). One board per mini-app; its unit, sort order
+ * and policy are set in the console (docs/RELEASE.md). Feature-checked at
+ * every call, so an SDK or Toss app without it simply hides the entry.
+ */
+const leaderboard: PlatformLeaderboard = {
+  supported() {
+    return can(Game?.setLeaderboardScore) && can(Game?.openLeaderboard)
+  },
+
+  async submit(score) {
+    if (!Number.isFinite(score) || !can(Game?.setLeaderboardScore)) return 'failed'
+    try {
+      // The API takes a float as a string ("123.45" or "9999").
+      const res = await Game.setLeaderboardScore({ score: String(Math.round(score)) })
+      if (res?.statusCode === 'SUCCESS') return 'ok'
+      if (res?.statusCode === 'PROFILE_NOT_FOUND') return 'no-profile'
+      return 'failed'
+    } catch {
+      // Not a game mini-app, not approved yet, or no bridge.
+      return 'failed'
+    }
+  },
+
+  async open() {
+    if (!can(Game?.openLeaderboard)) return false
+    try {
+      // Toss sends the mini-app to the background while the board is open.
+      await Game.openLeaderboard()
+      return true
+    } catch {
+      return false
+    }
+  },
+}
 
 export const platform: Platform = {
   kind: 'toss',
@@ -170,6 +220,24 @@ export const platform: Platform = {
       Screen.setIosSwipeBack({ isEnabled: on }).catch(() => {})
     } catch {
       // No bridge (plain browser).
+    }
+  },
+
+  leaderboard,
+
+  // No local reminders in Toss. Its only route is a 푸시알림 template that
+  // Toss sends after a console review, and its guide bars retention-purpose
+  // messages; a "today's chart is open" nudge is exactly that (docs/RELEASE.md).
+  reminders: null,
+
+  // Toss decides whether the rating sheet shows (fatigue policy) and never
+  // says what the player did, by design.
+  requestReview: async () => {
+    if (!can(Review?.request)) return
+    try {
+      await Review.request()
+    } catch {
+      // Older Toss app or no bridge.
     }
   },
 }

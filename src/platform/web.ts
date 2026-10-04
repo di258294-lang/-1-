@@ -1,10 +1,12 @@
 import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { Haptics, ImpactStyle } from '@capacitor/haptics'
+import { LocalNotifications } from '@capacitor/local-notifications'
 import { Share } from '@capacitor/share'
+import { InAppReview } from '@capacitor-community/in-app-review'
 import { withQuery } from '../core/url'
 import { copyWithToast } from './toast'
-import type { HapticKind, Platform } from './types'
+import type { HapticKind, Platform, PlatformReminders } from './types'
 
 /**
  * Browser and Capacitor (iOS/Android app) platform. One file because the
@@ -28,6 +30,65 @@ const IMPACT: Record<HapticKind, ImpactStyle> = {
 const GUARD = { holdBack: true }
 /** Set while exit() walks back past the game, so its own popstate is not taken as a back press. */
 let leaving = false
+
+/**
+ * Notification ids this game owns. One per scheduled day (the reminder keeps
+ * a rolling window of single notifications, not one repeating alarm, so a day
+ * already played can be skipped). Fixed, so cancelling never needs to ask the
+ * OS what is pending.
+ */
+const REMINDER_IDS = Array.from({ length: 21 }, (_, i) => 7100 + i)
+const REMINDER_CHANNEL = 'daily-reminder'
+
+/**
+ * Local notifications in the Capacitor apps. Nothing leaves the device: the
+ * OS fires them from its own alarm list. Android uses inexact alarms (the
+ * exact-alarm permission is removed in AndroidManifest.xml), so a reminder
+ * can arrive a little late, never early; fine for "the chart is open".
+ */
+const reminders: PlatformReminders = {
+  async ensurePermission() {
+    try {
+      let { display } = await LocalNotifications.checkPermissions()
+      if (display === 'prompt' || display === 'prompt-with-rationale') {
+        ;({ display } = await LocalNotifications.requestPermissions())
+      }
+      return display === 'granted' ? 'granted' : 'denied'
+    } catch {
+      return 'denied'
+    }
+  },
+
+  async replace(times, title, body) {
+    await reminders.cancelAll()
+    if (!times.length) return
+    try {
+      // Android 8+: its own channel, so the player can silence just this in
+      // the system settings. iOS has no channels (unimplemented: ignore).
+      await LocalNotifications.createChannel({ id: REMINDER_CHANNEL, name: '매일 알림', importance: 3, visibility: 1 })
+    } catch {
+      // Not Android.
+    }
+    await LocalNotifications.schedule({
+      notifications: times.slice(0, REMINDER_IDS.length).map((at, i) => ({
+        id: REMINDER_IDS[i],
+        title,
+        body,
+        channelId: REMINDER_CHANNEL,
+        schedule: { at, allowWhileIdle: false },
+        isExactNotification: false,
+      })),
+    })
+  },
+
+  async cancelAll() {
+    try {
+      await LocalNotifications.cancel({ notifications: REMINDER_IDS.map((id) => ({ id })) })
+    } catch {
+      // Nothing scheduled, or no plugin: nothing to cancel.
+    }
+  },
+}
 
 const isCancel = (err: unknown) =>
   (err as DOMException)?.name === 'AbortError' || /cancel/i.test(String((err as Error)?.message ?? err))
@@ -183,6 +244,21 @@ export const platform: Platform = {
   setSwipeBack() {
     // Capacitor's WKWebView has back/forward gestures off already.
   },
+
+  // Play Games Services may come later; web and the apps have no shared board.
+  leaderboard: null,
+
+  reminders: native ? reminders : null,
+
+  requestReview: native
+    ? async () => {
+        try {
+          await InAppReview.requestReview()
+        } catch {
+          // No Play Store (sideloaded APK) or not available: nothing shows.
+        }
+      }
+    : null,
 }
 
 export default platform

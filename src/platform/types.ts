@@ -14,6 +14,44 @@ export interface PlatformStorage {
   set(key: string, value: string): Promise<void>
 }
 
+/**
+ * A shared ranking run by the platform (Toss game center). The game only
+ * hands it a number and opens its screen; it never sees other players or
+ * any identifier, and nothing in the game depends on a rank.
+ */
+export interface PlatformLeaderboard {
+  /**
+   * Whether this shell can submit and open the board right now (bridge
+   * present, app version new enough). Never throws.
+   */
+  supported(): boolean
+  /**
+   * Submit one score (a finite integer). Resolves with what the board said:
+   * 'ok', 'no-profile' (the player has no game profile yet; worth one more
+   * try after the board was opened), or 'failed' (unsupported, not set up,
+   * rejected). Never rejects.
+   */
+  submit(score: number): Promise<'ok' | 'no-profile' | 'failed'>
+  /** Open the platform's ranking screen. Resolves false when it could not. Never rejects. */
+  open(): Promise<boolean>
+}
+
+/** Times are local wall-clock Dates; each one fires once. */
+export interface PlatformReminders {
+  /**
+   * The OS permission, asking for it when it was never asked. Call only from
+   * a user's own action (turning the reminder on). Never rejects.
+   */
+  ensurePermission(): Promise<'granted' | 'denied'>
+  /**
+   * Replace every reminder this game scheduled with one per given time.
+   * Rejects when the OS refused to schedule.
+   */
+  replace(times: Date[], title: string, body: string): Promise<void>
+  /** Cancel every reminder this game scheduled. Never rejects. */
+  cancelAll(): Promise<void>
+}
+
 export interface Platform {
   readonly kind: 'web' | 'capacitor' | 'toss'
   /** Run once before the first render. Never rejects. */
@@ -53,4 +91,14 @@ export interface Platform {
   exit(): Promise<void>
   /** iOS edge swipe back. Turn off during a round so a swipe cannot quit it. */
   setSwipeBack(on: boolean): void
+  /** The Toss game leaderboard; null where there is none (web, Capacitor). */
+  readonly leaderboard: PlatformLeaderboard | null
+  /** Local daily reminders (Capacitor apps only); null where there are none. */
+  readonly reminders: PlatformReminders | null
+  /**
+   * The store's own review prompt (Play In-App Review, SKStoreReviewController,
+   * Toss Review.request); null where there is none. The OS decides whether it
+   * shows at all, and the game never learns the outcome. Never rejects.
+   */
+  readonly requestReview: (() => Promise<void>) | null
 }

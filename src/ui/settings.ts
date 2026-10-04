@@ -5,6 +5,7 @@ import { setSoundEnabled } from './audio'
 import { h, haptic } from './dom'
 import { logError } from './errors'
 import { showIntro } from './intro'
+import { reminderRows } from './reminder'
 import { openSheet } from './sheet'
 
 /** Files that ship next to index.html (public/). Relative, so sub-paths and app shells work. */
@@ -173,6 +174,8 @@ export function openSettings() {
         'div',
         { class: 'settings-list' },
         ...ROWS.map((r) => switchRow(r.key, r.label, r.sub)),
+        // The opt-in daily reminder: only in the Capacitor apps.
+        ...reminderRows(),
         linkRow('게임 방법', () => {
           close()
           showIntro(() => {})
