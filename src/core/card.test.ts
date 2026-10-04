@@ -11,7 +11,10 @@ import {
   timingScore,
   type Box,
 } from './card'
+import { shownGap } from './copy'
+import { formatPct } from './format'
 import { generateMarket } from './market'
+import { createRng } from './rng'
 
 /** 40 ticks per slice, like a 40 s round at 10 ticks a second. */
 function series(moves: number[], per = 40) {
@@ -73,6 +76,21 @@ describe('card text', () => {
     expect(edgeText(0.05, 0.008)).toBe('그냥 들고 있기보다 +4.2%')
     expect(edgeText(-0.02, 0.01)).toBe('그냥 들고 있기보다 -3.0%')
     expect(edgeText(0.01, 0.01)).toBe('그냥 들고 있기보다 0.0%')
+  })
+
+  it('edge adds up with the two rounded numbers the result screen shows', () => {
+    // 나 +1.7% · 시장 +0.1%: the unrounded gap 1.698 would say +1.7%.
+    expect(edgeText(0.01749, 0.00051)).toBe('그냥 들고 있기보다 +1.6%')
+    const rng = createRng(2024)
+    for (let i = 0; i < 100_000; i++) {
+      const you = (rng.next() - 0.5) * 0.3
+      const bh = (rng.next() - 0.5) * 0.3
+      const shown = (x: number) => Math.round(Number(formatPct(x, 1).slice(0, -1)) * 10)
+      const t = shown(you) - shown(bh)
+      const edge = Number(edgeText(you, bh).replace('그냥 들고 있기보다 ', '').slice(0, -1))
+      expect(Math.round(edge * 10)).toBe(t)
+      expect(shownGap(you, bh)).toBe(`${(Math.abs(t) / 10).toFixed(1)}%`)
+    }
   })
 
   it('footnote joins what is there', () => {

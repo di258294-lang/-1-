@@ -36,9 +36,18 @@ export function shownPct(ratio: number): number {
   return Number(formatPct(ratio, 1).slice(0, -1))
 }
 
+/**
+ * The signed gap in percent between two returns as the screen rounds them
+ * (+1.7% and +0.1% -> 1.6), so every place that shows it adds up with the
+ * two numbers on the result screen.
+ */
+export function shownEdge(a: number, b: number): number {
+  return (Math.round(shownPct(a) * 10) - Math.round(shownPct(b) * 10)) / 10
+}
+
 /** "6.2%": the gap between two returns as the screen rounds them, so it always adds up. */
 export function shownGap(a: number, b: number): string {
-  return `${Math.abs(shownPct(a) - shownPct(b)).toFixed(1)}%`
+  return `${Math.abs(shownEdge(a, b)).toFixed(1)}%`
 }
 
 /**

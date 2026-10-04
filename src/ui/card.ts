@@ -11,6 +11,7 @@ import {
   type Box,
   type CardFormat,
 } from '../core/card'
+import { shownEdge } from '../core/copy'
 import { direction } from '../core/format'
 import type { Market } from '../core/market'
 import type { RoundResult } from '../core/round'
@@ -157,7 +158,7 @@ export function drawResultCard(ctx: CanvasRenderingContext2D, opts: ResultCardOp
 
   const edge = edgeText(result.yourReturn, result.buyHoldReturn)
   const lead = '그냥 들고 있기보다 '
-  const dir = direction(Math.round((result.yourReturn - result.buyHoldReturn) * 1000))
+  const dir = direction(shownEdge(result.yourReturn, result.buyHoldReturn))
   const edgeSize = fitSize(ctx, edge, 700, l.edge.size, l.panel.width - (inner - l.panel.x) * 2)
   runs(ctx, inner, l.edge.y, edgeSize, [
     [lead, C.ink2, 600],

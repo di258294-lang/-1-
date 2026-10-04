@@ -106,4 +106,13 @@ describe('habit type share', () => {
     expect(lines[2].endsWith('.')).toBe(true)
     expect(lines[3]).toBe('너는 무슨 형? https://x.y')
   })
+
+  it('asks "너는 어때?" for the types that are not a habit', () => {
+    for (const type of ['steady', 'watcher', 'machine'] as const) {
+      const profile: Profile = { type, scores: { holder: 0, chicken: 0, scalper: 0, chaser: 0, rumor: 0 }, rounds: 6 }
+      const lines = profileShareText(profile, 'https://x.y').split('\n')
+      expect(lines[1]).toBe(`나는 '${TYPES[type].name}'`)
+      expect(lines[3]).toBe('너는 어때? https://x.y')
+    }
+  })
 })

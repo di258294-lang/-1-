@@ -3,7 +3,7 @@ import type { RoundResult } from './round'
 import { edgeText, marketVerdicts } from './card'
 import { formatPct } from './format'
 import { PRODUCTS } from './products'
-import { TYPES, type Profile } from './habits'
+import { NO_HABIT_TYPES, TYPES, type Profile } from './habits'
 
 /**
  * Share texts. Every one is at most five lines, says (가상 게임) or (게임),
@@ -128,8 +128,11 @@ function firstSentence(text: string) {
  *   나는 '새가슴형'
  *   조금만 올라도 팔아요.
  *   너는 무슨 형? https://…
+ * The no-habit types (탐색 중, 관망형, 냉정한 기계형) aren't all "…형", so
+ * they ask "너는 어때?".
  */
 export function profileShareText(profile: Profile, url: string) {
   const type = TYPES[profile.type]
-  return ['HOLD 매매 습관 진단 (게임)', `나는 '${type.name}'`, firstSentence(type.line), `너는 무슨 형? ${url}`].join('\n')
+  const ask = NO_HABIT_TYPES.includes(profile.type) ? '너는 어때?' : '너는 무슨 형?'
+  return ['HOLD 매매 습관 진단 (게임)', `나는 '${type.name}'`, firstSentence(type.line), `${ask} ${url}`].join('\n')
 }

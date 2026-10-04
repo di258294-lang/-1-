@@ -1,3 +1,4 @@
+import { shownEdge } from './copy'
 import { formatPct } from './format'
 import { playPrice, type Market } from './market'
 import { PRODUCTS } from './products'
@@ -53,11 +54,13 @@ export function cardHeadline(day: number | null, market: Pick<Market, 'product' 
 }
 
 /**
- * "그냥 들고 있기보다 +4.2%": percentage points against holding all along.
- * Says nothing about the market's own direction.
+ * "그냥 들고 있기보다 +4.2%": percentage points against holding all along,
+ * from the two returns as the result screen rounds them (shownEdge), so the
+ * share text and card always add up with "나 · 시장". Says nothing about the
+ * market's own direction.
  */
 export function edgeText(yourReturn: number, buyHoldReturn: number) {
-  return `그냥 들고 있기보다 ${formatPct(yourReturn - buyHoldReturn, 1)}`
+  return `그냥 들고 있기보다 ${formatPct(shownEdge(yourReturn, buyHoldReturn) / 100, 1)}`
 }
 
 /** "12일 연속 · 새가슴 익절형", either part optional; null when both are missing. */

@@ -1,6 +1,6 @@
 import { gradeFor } from './round'
 import { describe, expect, it } from 'vitest'
-import { bridgeLine, edgeParts, edgeWords, gradeLineShown, largestPart, shownGap, shownPct } from './copy'
+import { bridgeLine, edgeParts, edgeWords, gradeLineShown, largestPart, shownEdge, shownGap, shownPct } from './copy'
 
 describe('returns in words', () => {
   it('uses the rounded numbers on screen', () => {
@@ -8,6 +8,10 @@ describe('returns in words', () => {
     expect(shownPct(0.0749)).toBe(7.5)
     // 나 -0.7% · 시장 0.0%: the gap is 0.7, not the raw 0.66.
     expect(shownGap(-0.0071, -0.0004)).toBe('0.7%')
+    // Signed, in tenths, with no float dust: +1.7% vs +0.1% is 1.6, not 1.698 or 1.5999.
+    expect(shownEdge(0.01749, 0.00051)).toBe(1.6)
+    expect(shownEdge(0.00051, 0.01749)).toBe(-1.6)
+    expect(shownEdge(0.0301, 0.0299)).toBe(0)
   })
 
   it('says each case plainly', () => {
