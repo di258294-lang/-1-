@@ -180,7 +180,7 @@ async function capture(browser, url) {
   for (const name of ['news', 'hold']) if (!taken.has(name)) throw new Error(`missed the ${name} shot`)
   await shot('result')
 
-  await page.getByRole('button', { name: /도전장 보내기/ }).click()
+  await page.getByRole('button', { name: /도전장에 내 이름|보내는 이름/ }).click()
   await page.clock.runFor(400)
   // Behind the sheet, show the top of the result rather than wherever the button scrolled to.
   await page.evaluate(() => window.scrollTo(0, 0))
@@ -190,7 +190,7 @@ async function capture(browser, url) {
   if (await page.locator('.sheet-scrim').count()) await page.locator('.sheet-scrim').click({ position: { x: 10, y: 10 } })
   await page.getByRole('button', { name: '홈으로' }).first().click()
   await page.clock.runFor(400)
-  await page.getByRole('button', { name: /내 매매 습관/ }).click()
+  await page.getByRole('button', { name: /내 매매 습관|지금 미션/ }).first().click()
   await page.clock.runFor(400)
   await shot('habits')
   await context.close()
