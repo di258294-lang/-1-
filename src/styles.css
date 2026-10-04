@@ -413,8 +413,8 @@ button {
 .chart-wrap {
   position: relative;
   flex: 1;
-  min-height: 220px;
-  margin-top: 8px;
+  min-height: 180px;
+  margin-top: 4px;
 }
 
 .chart-wrap canvas {
@@ -435,24 +435,29 @@ button {
   pointer-events: none;
 }
 
+/* The news strip has its own reserved row above the chart, so it never
+   covers the price line (the newest prices are drawn at the right edge) and
+   the chart never jumps when a headline comes or goes. */
 .news {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  top: 4px;
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px 14px;
+  margin: 6px 16px 0;
+  min-height: 56px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 8px 14px;
   border-radius: 14px;
   background: var(--ink);
   color: var(--on-ink);
   font-size: 15px;
   line-height: 1.35;
-  transform: translateY(-6px);
+  transform: translateY(-4px);
   opacity: 0;
   transition: opacity 140ms, transform 140ms;
   pointer-events: none;
+}
+
+.news.with-coach {
+  min-height: 76px;
 }
 
 .news.show {
@@ -461,10 +466,8 @@ button {
 }
 
 .news-tag {
-  flex: none;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  padding-top: 1px;
   opacity: 0.6;
 }
 
@@ -1592,10 +1595,9 @@ button.cal-cell:active {
 /* ---------- customer experience: news tags, coach, settings ---------- */
 
 .news-tags {
-  flex: none;
-  display: grid;
-  gap: 2px;
-  justify-items: start;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
 }
 
 .news-tone {
@@ -1608,7 +1610,7 @@ button.cal-cell:active {
 
 .news-body {
   display: grid;
-  gap: 6px;
+  gap: 2px;
   min-width: 0;
 }
 

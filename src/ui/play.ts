@@ -72,7 +72,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   const coachText = h('span', { class: 'news-coach' })
   const news = h(
     'div',
-    { class: 'news', role: 'status', 'aria-live': 'polite' },
+    { class: coach ? 'news with-coach' : 'news', role: 'status', 'aria-live': 'polite' },
     h('span', { class: 'news-tags' }, newsTag, toneTag),
     h('span', { class: 'news-body' }, newsText, coachText),
   )
@@ -305,7 +305,8 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
       delta,
       tutorial ? h('p', { class: 'play-note' }, DISCLAIMER) : null,
     ),
-    h('div', { class: 'chart-wrap' }, canvas, news, countdown),
+    news,
+    h('div', { class: 'chart-wrap' }, canvas, countdown),
     pad,
   )
 

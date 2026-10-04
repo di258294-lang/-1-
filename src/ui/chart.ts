@@ -470,7 +470,8 @@ export class Chart {
       const tw = ctx.measureText(label).width
       const bw = tw + 14
       const bh = 22
-      const bx = this.w - right + 10
+      // Keep the whole tag on screen, even for wide prices.
+      const bx = Math.min(this.w - right + 10, this.w - bw - 6)
       const by = Math.max(0, Math.min(this.h - bh, headY - bh / 2))
       ctx.beginPath()
       roundRect(ctx, bx, by, bw, bh, 6)
