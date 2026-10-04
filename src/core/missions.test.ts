@@ -5,6 +5,7 @@ import {
   advanceMission,
   emptyMissionState,
   G0,
+  filingNeed,
   isComplete,
   judgeMission,
   LONG_HOLD_SEC,
@@ -16,6 +17,8 @@ import {
   progressText,
   roundMetrics,
   STARTER_SWITCH_REASON,
+  stopAllowance,
+  stopChanceCount,
   WEEK_SWITCH_REASON,
   weekOf,
   type Attempt,
@@ -105,6 +108,27 @@ const disciplined: Style = (m) => {
   return held
 }
 
+/** Cuts a loser at 1.5 two-second swings, then waits 2 to 6 s before buying again. */
+const restingCutter: Style = (m, rng) => {
+  const stop = 1.5 * tickVolatility(m) * Math.sqrt(20)
+  const held = new Array<boolean>(m.playTicks).fill(false)
+  let holding = false
+  let entry = 0
+  let rest = 0
+  for (let t = 0; t < m.playTicks; t++) {
+    const p = playPrice(m, t)
+    if (holding && p < entry * (1 - stop)) {
+      holding = false
+      rest = t + rng.int(20, 60)
+    } else if (!holding && t >= rest) {
+      holding = true
+      entry = p
+    }
+    held[t] = holding
+  }
+  return held
+}
+
 /** 12 to 16 short taps per 40 s. */
 const masher: Style = (m, rng) => {
   const held = new Array<boolean>(m.playTicks).fill(false)
@@ -152,6 +176,21 @@ const rumorFollower: Style = (m, rng) => {
   const held = random(m, rng)
   for (const n of m.news) {
     if (n.kind !== 'rumor' || n.at >= m.playTicks) continue
+    const act = Math.min(n.at + rng.int(2, 8), n.impactAt - 1)
+    const want = n.implied > 0
+    for (let t = Math.max(0, n.at - 5); t < act; t++) held[t] = !want
+    const until = Math.min(m.playTicks, n.impactAt + rng.int(10, 40))
+    for (let t = act; t < until; t++) held[t] = want
+    if (until < m.playTicks) held[until] = !want
+  }
+  return held
+}
+
+/** Random background, plus acting on each filing's headline before the price moves. */
+const filingFollower: Style = (m, rng) => {
+  const held = random(m, rng)
+  for (const n of m.news) {
+    if (n.kind !== 'filing' || n.at >= m.playTicks) continue
     const act = Math.min(n.at + rng.int(2, 8), n.impactAt - 1)
     const want = n.implied > 0
     for (let t = Math.max(0, n.at - 5); t < act; t++) held[t] = !want
@@ -223,13 +262,17 @@ const base: RoundMetrics = {
   stopLosers: 1,
   stopLate: 0,
   stopLateSec: 0,
+  stopChance: 0.3,
   longestShare: 0.3,
   longestSec: 12,
   lossTrades: 1,
   winTrades: 2,
   avgWinHoldSec: 5,
   avgLossHoldSec: 3,
-  comparableRates: true,
+  upSec: 8,
+  downSec: 6,
+  sellsUp: 1,
+  sellsDown: 2,
   sellRateUp: 0.1,
   sellRateDown: 0.2,
   chaseEntries: 0,
@@ -239,6 +282,7 @@ const base: RoundMetrics = {
   rumorChance: 0.2,
   filings: 1,
   filingReactions: 1,
+  filingChance: 0.2,
   isLong: false,
   ticksPerDay: 20,
   playTicks: 400,
@@ -300,6 +344,65 @@ describe('missions separate the habit from its absence', () => {
     expect(taps - plain).toBeLessThan(0.08)
   })
 
+  it('stopLine allows what exits blind to the line give: random pressers pass about as often in long rounds as in short ones', () => {
+    // Was 1% in long rounds against 48% in short ones, with no late exit allowed at all.
+    const short = rates(random, 'stopLine', 60).pass
+    const long = rates(random, 'stopLine', 20, 'long').pass
+    expect(short).toBeGreaterThan(0.35)
+    expect(short).toBeLessThan(0.6)
+    expect(long).toBeGreaterThan(0.3)
+    expect(Math.abs(long - short)).toBeLessThan(0.15)
+    // Bag holders still fail in long rounds, taps or not.
+    expect(rates(bagHolder, 'stopLine', 20, 'long').pass).toBeLessThan(0.1)
+    expect(rates(bagHolderTaps, 'stopLine', 20, 'long').pass).toBeLessThan(0.1)
+  })
+
+  it('stopLine: the allowance is one fewer than chance gives, and the copy says so', () => {
+    expect(stopAllowance({ stopChance: 1.4 })).toBe(0)
+    expect(stopAllowance({ stopChance: 1.5 })).toBe(1)
+    expect(stopAllowance({ stopChance: 5.2 })).toBe(4)
+    const m = { ...base, stopLosers: 17, stopLate: 4, stopLateSec: 3, stopChance: 5.2 }
+    const ok = judgeMission('stopLine', m)
+    expect(ok.verdict).toBe('pass')
+    expect(ok.measure).toContain(`아무 때나 팔아도 ${stopChanceCount(m)}개쯤은 늦어서, 4개까지는 괜찮아요.`)
+    expect(judgeMission('stopLine', { ...m, stopLate: 5 }).verdict).toBe('fail')
+    expect(judgeMission('rules3', { ...m, stopLate: 5 }).verdict).toBe('fail')
+    expect(judgeMission('rules3', m).verdict).toBe('pass')
+    // One losing trade ridden past the line always fails: chance can never excuse a single one.
+    expect(judgeMission('stopLine', { ...base, stopLosers: 1, stopLate: 1, stopChance: 0.9 }).verdict).toBe('fail')
+  })
+
+  it('stopLine chance does not grow with how long you hold losers: it is the chart times your losing trades', () => {
+    let compared = 0
+    for (let s = 4_000; s < 4_006; s++) {
+      const a = metricsOf(bagHolder, 'stock', s, 'long')
+      const b = metricsOf(random, 'stock', s, 'long')
+      if (!a.stopLosers || !b.stopLosers) continue
+      expect(a.stopChance / a.stopLosers).toBeCloseTo(b.stopChance / b.stopLosers, 9)
+      compared++
+    }
+    expect(compared).toBeGreaterThan(2)
+  })
+
+  it('lossFirst is judged in most rounds of someone who cuts losses and rests, not only rounds with 3 sells', () => {
+    // Was judged in 29% of short rounds, so a real change completed only 60% of the time within 10 played rounds.
+    const r = rates(restingCutter, 'lossFirst')
+    expect(r.judged).toBeGreaterThan(0.6)
+    expect(r.pass).toBeGreaterThan(0.95)
+    expect(rates(bagHolder, 'lossFirst').pass).toBe(0)
+    expect(rates(bagHolder, 'lossFirst', 12, 'long').pass).toBe(0)
+  })
+
+  it('filingOnly in long rounds needs more filing reactions than pressing at your own pace gives', () => {
+    expect(filingNeed({ filingChance: 0.3 })).toBe(1)
+    expect(filingNeed({ filingChance: 3.6 })).toBe(5)
+    // Random pressers passed 46% of long rounds with "one filing is enough".
+    expect(rates(random, 'filingOnly', 12, 'long').pass).toBeLessThan(0.25)
+    expect(rates(filingFollower, 'filingOnly', 12, 'long').pass).toBeGreaterThan(0.6)
+    expect(rates(filingFollower, 'filingOnly', 60).pass).toBeGreaterThan(0.5)
+    expect(rates(random, 'filingOnly', 60).pass).toBeLessThan(0.3)
+  })
+
   it('lossFirst: a bag holder never passes, a loss cutter nearly always does', () => {
     expect(rates(bagHolder, 'lossFirst').pass).toBe(0)
     expect(rates(disciplined, 'lossFirst').pass).toBeGreaterThan(0.9)
@@ -334,18 +437,33 @@ describe('missions separate the habit from its absence', () => {
     expect(rates(random, 'filingOnly').pass).toBeLessThan(0.35)
   })
 
-  it('longHold and stayIn cannot be farmed by pressing once and holding to the bell', () => {
-    for (const id of ['longHold', 'stayIn'] as const) {
+  it('longHold, stayIn, fewTrades and rules3 cannot be farmed by pressing once and holding to the bell', () => {
+    for (const id of ['longHold', 'stayIn', 'fewTrades', 'rules3'] as const) {
       expect(rates(buyHold, id, 20).judged, id).toBe(0)
       expect(rates(buyHold, id, 4, 'long').judged, id).toBe(0)
     }
   })
 
-  it('longHold uses the same 10 seconds in both lengths', () => {
-    expect(LONG_HOLD_SEC).toBe(10)
-    expect(judgeMission('longHold', { ...base, longestSec: 10, longestShare: 0.03, isLong: true, playTicks: 3000 }).verdict).toBe('pass')
-    expect(judgeMission('longHold', { ...base, longestSec: 9.9, longestShare: 0.33 }).verdict).toBe('fail')
-    expect(MISSIONS.longHold.goal).not.toContain('4분의 1')
+  it('longHold asks 10 s of a short round and 30 s of a long one, and says both', () => {
+    expect(LONG_HOLD_SEC).toEqual({ short: 10, long: 30 })
+    const long = { ...base, isLong: true, playTicks: 3000, ticksPerDay: 12 }
+    expect(judgeMission('longHold', { ...base, longestSec: 10, longestShare: 0.25 }).verdict).toBe('pass')
+    expect(judgeMission('longHold', { ...base, longestSec: 9.9, longestShare: 0.25 }).verdict).toBe('fail')
+    expect(judgeMission('longHold', { ...long, longestSec: 30, longestShare: 0.1 }).verdict).toBe('pass')
+    const short = judgeMission('longHold', { ...long, longestSec: 29.9, longestShare: 0.1 })
+    expect(short.verdict).toBe('fail')
+    expect(short.measure).toContain('목표는 30초 이상이에요')
+    expect(MISSIONS.longHold.goal).toContain('한 번에 10초(긴 판은 30초) 이상')
+  })
+
+  it('longHold is not free in long rounds: a random presser and a 0.5-15 s presser fail, someone who stays in passes', () => {
+    const dontCare: Style = (m, rng) => randomRuns(m, rng, Math.max(1, Math.round(rng.int(1, 6) * scale(m))), 5, 150)
+    // Was 100% with a flat 10 s.
+    expect(rates(dontCare, 'longHold', 8, 'long').pass).toBeLessThan(0.1)
+    expect(rates(random, 'longHold', 8, 'long').pass).toBe(0)
+    expect(rates(restingCutter, 'longHold', 8, 'long').pass).toBeGreaterThan(0.9)
+    // Short rounds keep 10 s.
+    expect(rates(dontCare, 'longHold').pass).toBeGreaterThan(0.4)
   })
 
   it('rules3 is reachable for a disciplined trader: 3 in a row in a fair share of tries', () => {
@@ -374,6 +492,31 @@ describe('completing a mission takes a changed habit, not luck (3 of the last 4 
 
   it('stopLine: a loss cutter completes within 10 judged rounds at least 90% of the time', () => {
     expect(completion(cut, 'stopLine')).toBeGreaterThanOrEqual(0.9)
+  })
+
+  it('stopLine in long rounds: a loss cutter completes, a bag holder does not', () => {
+    expect(completion(verdicts(disciplined, 'stopLine', 8, 'long', 74_000), 'stopLine')).toBeGreaterThanOrEqual(0.9)
+    expect(completion(verdicts(bagHolder, 'stopLine', 12, 'long', 74_000), 'stopLine')).toBeLessThanOrEqual(0.1)
+  })
+
+  it('lossFirst: someone who changed completes within 10 played rounds at least 90% of the time', () => {
+    // Played, not judged: rounds that can't be judged use up the player's rounds too.
+    const pool = verdicts(restingCutter, 'lossFirst', 60, 'short', 75_000)
+    const rng = createRng(3)
+    let done = 0
+    for (let p = 0; p < 4000; p++) {
+      const attempts: Attempt[] = []
+      for (let r = 0; r < 10; r++) {
+        const v = pool[rng.int(0, pool.length - 1)]
+        if (v === 'ineligible') continue
+        attempts.push(v)
+        if (isComplete(progressOf('lossFirst', attempts))) {
+          done++
+          break
+        }
+      }
+    }
+    expect(done / 4000).toBeGreaterThanOrEqual(0.9)
   })
 
   it('lossFirst: a bag holder never completes it, a loss cutter does', () => {
