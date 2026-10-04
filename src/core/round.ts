@@ -29,6 +29,8 @@ export type Round = {
   equityCurve: number[]
   /** Equity when the current position was opened, for the live P&L. */
   entryEquity: number
+  /** Tick and fee of the last sell, so a re-press inside the same tick can undo it. */
+  lastExit: { tick: number; fee: number } | null
 }
 
 export function createRound(market: Market, startEquity = START_EQUITY): Round {
@@ -44,6 +46,7 @@ export function createRound(market: Market, startEquity = START_EQUITY): Round {
     held: [],
     equityCurve: [startEquity],
     entryEquity: startEquity,
+    lastExit: null,
   }
 }
 
@@ -55,6 +58,16 @@ export function setHolding(round: Round, holding: boolean) {
   if (round.holding === holding) return
   // After the bell you can only close, never open.
   if (holding && isOver(round)) return
+  const t = round.tick
+  // Released and pressed again inside one tick: the position never really
+  // closed, so the sell is undone instead of counting a second trade.
+  if (holding && round.lastExit?.tick === t) {
+    round.equity += round.lastExit.fee
+    round.fees -= round.lastExit.fee
+    round.lastExit = null
+    round.holding = true
+    return
+  }
   const fee = round.equity * round.market.feeRate
   round.equity -= fee
   round.fees += fee
@@ -62,6 +75,10 @@ export function setHolding(round: Round, holding: boolean) {
   if (holding) {
     round.trades += 1
     round.entryEquity = round.equity
+    // A quick tap that opens and closes inside one tick still held that tick.
+    round.held[t] = true
+  } else {
+    round.lastExit = { tick: t, fee }
   }
 }
 
@@ -71,14 +88,15 @@ export function advanceTo(round: Round, target: number) {
   const cashRate = cashRatePerTick(round.market)
   while (round.tick < end) {
     const t = round.tick
-    if (round.holding) {
+    const held = round.holding || round.held[t] === true
+    if (held) {
       round.equity *= playPrice(round.market, t + 1) / playPrice(round.market, t)
     } else {
       const earned = round.equity * cashRate
       round.equity += earned
       round.interest += earned
     }
-    round.held[t] = round.holding
+    round.held[t] = held
     round.tick = t + 1
     round.equityCurve.push(round.equity)
   }
