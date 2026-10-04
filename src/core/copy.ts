@@ -76,8 +76,9 @@ export function gradeLineShown(line: string, you: number, buyHold: number): stri
   const a = shownPct(you)
   const b = shownPct(buyHold)
   if (b === 0 && a !== 0) return `${edgeWords(you, buyHold)}.`
-  const raw = `${Math.abs((you - buyHold) * 100).toFixed(1)}%`
-  return line.split(raw).join(shownGap(you, buyHold))
+  // gradeFor already derives the gap from the rounded returns, so the line
+  // is used as is (a blind text replace could hit another number in it).
+  return line
 }
 
 // ---------------------------------------------------------------------------

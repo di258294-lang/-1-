@@ -147,6 +147,7 @@ function nextMission(outcome: MissionOutcome | null, compact: boolean): { tip: H
       { class: 'tip next-action' },
       h('span', null, label),
       h('b', null, def.title),
+      fresh && outcome?.reason && !compact ? h('span', { class: 'next-goal' }, outcome.reason) : null,
       h('span', { class: 'next-goal' }, def.goal),
     ),
     why: fresh ? h('p', { class: 'fine' }, `${label} · ${def.title}: ${def.why}`) : null,
@@ -171,9 +172,10 @@ function tomorrowHook(key: string): HTMLElement | null {
       const p = weeklyProgress(key, weeklyDay, (d) => generateMarket(dailySeed(d.key), productOf(d.key), 'short'))
       const left = p.days.filter((d) => d.mark === 'future').length
       const need = p.goal - p.passed
-      if (p.done) weekly = '이번 주 챌린지 완료'
+      if (p.days.find((d) => d.key === key)?.mark === 'skip') weekly = '이번 주 챌린지 · 오늘 차트엔 소문이 없어서 세지 않았어요'
+      else if (p.done) weekly = '이번 주 챌린지 완료'
       else if (left === 0) weekly = '내일부터 새 주 챌린지가 열려요'
-      else if (need <= left) weekly = `이번 주 챌린지 ${p.passed}/${p.goal}, ${need === 1 ? '하루' : `${need}번`} 더 해내면 완료예요`
+      else if (need <= left) weekly = `이번 주 챌린지 ${p.goal}번 중 ${p.passed}번, ${need === 1 ? '하루' : `${need}번`} 더 해내면 완료예요`
     } catch (err) {
       logError(err, 'tomorrowHook weekly')
     }

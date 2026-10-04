@@ -1,3 +1,4 @@
+import { gradeFor } from './round'
 import { describe, expect, it } from 'vitest'
 import { bridgeLine, edgeParts, edgeWords, gradeLineShown, largestPart, shownGap, shownPct } from './copy'
 
@@ -21,7 +22,7 @@ describe('returns in words', () => {
     expect(edgeWords(0.012, 0.0002)).toBe('시장은 그대로였는데 1.2% 벌었어요')
   })
 
-  it('fixes the gap in a grade line and handles a market at 0.0', () => {
+  it('keeps the grade line gap and handles a market at 0.0', () => {
     // Where raw and rounded agree, the line is left alone.
     const you = 0.01849
     const bh = 0.08049
@@ -31,7 +32,8 @@ describe('returns in words', () => {
     const line = `그냥 들고 있었으면 ${raw} 더 벌었어요.`
     expect(gradeLineShown(line, you, bh)).toBe(line)
     expect(gradeLineShown('그냥 들고 있었으면 0.6% 덜 잃었어요.', -0.0071, -0.0004)).toBe('시장은 그대로였는데 0.7% 잃었어요.')
-    expect(gradeLineShown('그냥 들고 있었으면 0.5% 더 벌었어요.', 0.0144, 0.0196)).toBe('그냥 들고 있었으면 0.6% 더 벌었어요.')
+    // The gap itself now comes from gradeFor (rounded returns 1.4% vs 2.0%).
+    expect(gradeFor(0.0144, 0.0196, 0.5).line).toContain('0.6%')
   })
 })
 
