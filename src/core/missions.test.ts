@@ -292,17 +292,32 @@ describe('guard G0: a mission cannot be passed by not playing or by mashing', ()
   it('leaves rounds with no trade, little time held or too many trades unjudged', () => {
     for (const id of MISSION_IDS) {
       expect(judgeMission(id, { ...base, trades: 0, t40: 0, heldRatio: 0 }).verdict).toBe('ineligible')
-      expect(judgeMission(id, { ...base, heldRatio: G0.minHeld - 0.01 }).verdict).toBe('ineligible')
+      // Holding too little is the very thing fewTrades and longHold ask about,
+      // so it can fail them; it never passes them, and other missions skip it.
+      const light = judgeMission(id, { ...base, heldRatio: G0.minHeld - 0.01 }).verdict
+      // (longHold may still pass: in a long round a 30 s hold is only 10%.)
+      if (id === 'fewTrades') expect(light).not.toBe('pass')
+      else if (id === 'longHold') expect(light).not.toBe('ineligible')
+      else expect(light).toBe('ineligible')
       // Mashing is unjudged, except on the mission about trading less, where it fails.
       expect(judgeMission(id, { ...base, trades: 9, t40: G0.maxT40 + 0.5 }).verdict).toBe(id === 'fewTrades' ? 'fail' : 'ineligible')
       expect(judgeMission(id, base).verdict).not.toBe('ineligible')
     }
   })
 
-  it('never judges the one-tap player, and judges the masher only to fail fewTrades', () => {
+  it('never passes the one-tap player, and judges the masher only to fail fewTrades', () => {
     for (const id of MISSION_IDS) {
-      expect(rates(tapper, id, 20).judged, id).toBe(0)
+      if (id === 'fewTrades' || id === 'longHold') {
+        // A single short tap is judged here, and it can only fail.
+        expect(verdicts(tapper, id, 20).every((v) => v !== 'pass'), id).toBe(true)
+      } else {
+        expect(rates(tapper, id, 20).judged, id).toBe(0)
+      }
       if (id === 'fewTrades') continue
+      if (id === 'longHold') {
+        expect(verdicts(masher, id, 20).every((v) => v !== 'pass'), id).toBe(true)
+        continue
+      }
       expect(rates(masher, id, 20).judged, id).toBe(0)
     }
     const mash = verdicts(masher, 'fewTrades', 20)

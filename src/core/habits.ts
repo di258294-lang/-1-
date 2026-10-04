@@ -546,7 +546,8 @@ export function roundInsight(h: RoundHabits): Insight {
         }
     }
   }
-  if (f.filingReactions > 0) {
+  // Praise only more than a stray press: at least a third of the filings.
+  if (f.filingReactions >= Math.max(1, Math.ceil(f.filings / 3))) {
     return {
       tone: 'good',
       title: '공식 발표에 빠르게 반응했어요',

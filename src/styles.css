@@ -1903,3 +1903,30 @@ button.cal-cell:active {
 @media (max-height: 820px) {
   .home:not(.home-first) .home-lede { display: none; }
 }
+
+/* Release QA fixes */
+/* The week sheet ends with its legend; the note below must not ride up on it. */
+.wk-sheet + .sheet-note {
+  margin-top: 12px;
+}
+/* Toasts span the text, sit above the main button and read on any surface. */
+.toast {
+  width: max-content;
+  max-width: calc(100vw - 48px);
+  bottom: calc(var(--safe-bottom) + 150px);
+  box-shadow: 0 0 0 1px var(--ink-4);
+  text-align: center;
+}
+/* Week dots that must read at a glance (WCAG 1.4.11, 3:1 for graphics):
+   a missed day carries a solid centre dot, a 휴장일 a filled ring, and days
+   before the player started show nothing, so they never look like a key. */
+.wk-missed .wk-dot {
+  background: radial-gradient(circle, var(--ink-3) 0 3.5px, transparent 4px), var(--well);
+}
+.wk-frozen .wk-dot {
+  background: var(--well);
+}
+.wk-before .wk-dot {
+  box-shadow: none;
+  background: none;
+}

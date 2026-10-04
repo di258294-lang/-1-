@@ -225,6 +225,8 @@ const L4: Rule = ({ market, habits }) => {
   if (!rumors.length) return null
   if (!(habits.facts.rumorReactions >= 1 || (market.product === 'coin' && rumors.length >= 2))) return null
   const right = rumors.filter((n) => n.actual === n.implied).length
+  // Every rumor came true this time: "반쯤 틀려요" would contradict the round.
+  if (right === rumors.length) return null
   return {
     id: 'L4',
     title: '소문은 반쯤 틀려요',

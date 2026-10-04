@@ -438,7 +438,8 @@ function row(label: string, value: number, me = false) {
     'div',
     { class: `row${me ? ' me' : ''}` },
     h('span', { class: 'row-label' }, label),
-    h('span', { class: `row-value num ${direction(value)}` }, formatPct(value, 1)),
+    // Colour by the number as shown: -0.04% reads 0.0%, so it is flat.
+    h('span', { class: `row-value num ${direction(Math.round(value * 1000) / 1000)}` }, formatPct(value, 1)),
   )
 }
 

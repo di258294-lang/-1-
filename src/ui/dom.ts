@@ -80,5 +80,17 @@ export function storageWarning(): HTMLElement | null {
   } catch {
     // Can't even ask: say so.
   }
-  return h('p', { class: 'fine storage-warn', role: 'status' }, '기록이 저장되지 않고 있어요. 브라우저 저장 공간을 확인해 주세요.')
+  let newer = false
+  try {
+    newer = save.readOnly()
+  } catch {
+    // Fall back to the general advice.
+  }
+  return h(
+    'p',
+    { class: 'fine storage-warn', role: 'status' },
+    newer
+      ? '더 새 버전에서 저장한 기록이라 이 버전에서는 저장하지 않아요. 최신 버전으로 열어 주세요.'
+      : '기록이 저장되지 않고 있어요. 브라우저 저장 공간을 확인해 주세요.',
+  )
 }

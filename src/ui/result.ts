@@ -236,7 +236,9 @@ function tutorialResult(go: Navigate, market: Market, result: RoundResult): Scre
           ? toggle
             ? '한 번 톡 치면 사고, 다시 톡 치면 팔아요. 그 사이 동안만 들고 있어요.'
             : '짧게 톡 치면 사자마자 팔려요. 손가락을 화면에 대고 있는 동안만 들고 있어요.'
-          : '손가락을 대고 있는 동안 들고 있고, 떼면 팔아요. 그게 전부예요.',
+          : toggle
+            ? '톡 치면 사고, 다시 톡 치면 팔아요. 그게 전부예요.'
+            : '손가락을 대고 있는 동안 들고 있고, 떼면 팔아요. 그게 전부예요.',
     ),
     versusLine(result),
     h('p', { class: 'fine' }, '연습이라 기록에는 남지 않아요.'),

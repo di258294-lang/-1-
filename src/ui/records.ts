@@ -244,7 +244,7 @@ export function recordsScreen(go: Navigate): Screen {
   const seasonCard = h(
     'section',
     { class: 'habit-card' },
-    h('p', { class: 'habit-kicker' }, `${season.label} · 끝까지 ${seasonDaysLeft(today)}일`),
+    h('p', { class: 'habit-kicker' }, `${season.label} · ${seasonDaysLeft(today) > 0 ? `끝까지 ${seasonDaysLeft(today)}일` : '오늘 마감'}`),
     h('h2', { class: 'habit-title num' }, season.entries ? seasonVersus(seasonLine) : formatWon(season.account)),
     h('p', { class: 'habit-line num' }, season.entries ? seasonCardDetail(season) : '이번 달 오늘의 차트를 하면 계좌가 움직여요.'),
     h('p', { class: 'fine' }, `${SEASON_RULE} ${MEDAL_RULE}`),

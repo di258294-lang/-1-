@@ -566,6 +566,8 @@ export function judgeMission(id: MissionId, m: RoundMetrics): MissionCheck {
   if (id === 'fewTrades' && m.t40 > G0.maxT40) {
     return { verdict: 'fail', measure: `매매가 ${per40(m)}으로 너무 잦았어요. 목표는 매매 4번 이하, 시간 40% 이상이에요.` }
   }
+  // Holding too little is exactly what these two missions ask about: judge it.
+  if ((id === 'fewTrades' || id === 'longHold') && m.heldRatio < G0.minHeld) return MISSIONS[id].judge(m)
   if (m.heldRatio < G0.minHeld) {
     return { verdict: 'ineligible', measure: `들고 있던 시간이 ${pct0(m.heldRatio)}로 20%보다 짧아서 세지 않았어요.` }
   }

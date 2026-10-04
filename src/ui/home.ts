@@ -147,7 +147,7 @@ export function homeScreen(go: Navigate): Screen {
         'small',
         { class: 'num' },
         // Any daily this month, abandoned ones too: they move the account (qa3 P2-8).
-        season.entries ? `시장 ${formatPct(season.market)} · ${seasonDaysLeft(key)}일 남음` : `${seasonDaysLeft(key)}일 남음`,
+        season.entries ? `시장 ${formatPct(season.market)} · ${daysLeftText(seasonDaysLeft(key))}` : daysLeftText(seasonDaysLeft(key)),
       ),
     ),
     h(
@@ -219,7 +219,10 @@ export function homeScreen(go: Navigate): Screen {
 
   // Background timers freeze, so also check when the app comes back.
   const checkDate = () => {
-    if (!document.hidden && dateKey() !== key) go({ name: 'home' })
+    if (document.hidden || dateKey() === key) return
+    // A new day: redraw, but never under an open sheet (it waits for close).
+    redrawPending = true
+    scheduleRedraw()
   }
   const dateTimer = window.setInterval(checkDate, 1000)
   document.addEventListener('visibilitychange', checkDate)
@@ -446,4 +449,9 @@ function playedCard(market: Market, saved: SavedDaily, day: number, streak: numb
           '결과 공유하기',
         ),
   )
+}
+
+/** "12일 남음", or "오늘 마감" on the season's last day (its daily still counts). */
+function daysLeftText(left: number) {
+  return left > 0 ? `${left}일 남음` : '오늘 마감'
 }
