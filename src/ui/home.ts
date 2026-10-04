@@ -14,6 +14,7 @@ import { showProductSheet } from './products'
 import { markSeasonsSeen, pendingRecap, recapCard } from './season'
 import { shareResult } from './share'
 import { weekStripButton } from './week'
+import { missionChip } from './missions'
 import { weeklyRow } from './weekly'
 
 const weekday = ['일', '월', '화', '수', '목', '금', '토']
@@ -200,6 +201,8 @@ export function homeScreen(go: Navigate): Screen {
         h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
       ),
     ),
+    // The active habit mission; off the one-screen home until today's chart is done.
+    played ? missionChip(() => go({ name: 'habits' })) : null,
   )
 
   // Background timers freeze, so also check when the app comes back.
