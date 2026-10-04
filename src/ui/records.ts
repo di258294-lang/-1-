@@ -22,6 +22,7 @@ import { showProductSheet } from './products'
 import { archivedLabel, fromArchive, MEDAL_LINE, MEDAL_RULE, seasonDetail, seasonVersus, SEASON_RULE } from './season'
 import { openSheet } from './sheet'
 import { FREEZE_RULE, productOf, weekCells, weekLabel, weekLegend } from './week'
+import { weeklySection } from './weekly'
 
 const WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일']
 
@@ -331,6 +332,7 @@ export function recordsScreen(go: Navigate): Screen {
       top,
       h('h1', { class: 'result-grade' }, '내 기록'),
       weekCard,
+      weeklySection(),
       calendars,
       seasonCard,
       skillCard,
