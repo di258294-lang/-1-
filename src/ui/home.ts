@@ -7,8 +7,9 @@ import { generateMarket, playPrice, type Market } from '../core/market'
 import { save, type SavedDaily } from '../core/storage'
 import type { Navigate, Screen } from './app'
 import { Chart } from './chart'
-import { h, toast } from './dom'
-import { showIntro } from './intro'
+import { h, icons, svg, toast } from './dom'
+import { openSettings } from './settings'
+import { startTutorial } from './tutorial'
 import { showProductSheet } from './products'
 import { markSeasonsSeen, pendingRecap, recapCard } from './season'
 import { shareResult } from './share'
@@ -60,7 +61,12 @@ export function homeScreen(go: Navigate): Screen {
     'div',
     { class: 'topbar' },
     h('span', { class: 'wordmark' }, 'HOLD'),
-    streak > 0 ? h('span', { class: 'home-streak' }, h('b', { class: 'num' }, `${streak}일`), ' 연속') : null,
+    h(
+      'span',
+      { class: 'home-tools' },
+      streak > 0 ? h('span', { class: 'home-streak' }, h('b', { class: 'num' }, `${streak}일`), ' 연속') : null,
+      h('button', { class: 'icon-btn', 'aria-label': '설정', onclick: () => openSettings() }, svg(icons.settings)),
+    ),
   )
 
   const openRecords = () => go({ name: 'records' })
@@ -87,13 +93,11 @@ export function homeScreen(go: Navigate): Screen {
   const cleanups: Array<() => void> = []
   const body = played ? playedCard(market, played, key, day, cleanups) : teaser(market, product.name, cleanups)
 
-  // Rules show once, right before the first round, when they matter.
+  // The very first press runs the guided tutorial round instead, so nobody
+  // spends the irreversible daily chart learning the controls.
   const withIntro = (start: () => void) => () => {
     if (save.seenIntro()) return start()
-    showIntro(() => {
-      save.markIntroSeen()
-      start()
-    })
+    startTutorial(go)
   }
 
   const startDaily = withIntro(() => {

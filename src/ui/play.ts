@@ -1,16 +1,21 @@
+import { newsKindLabel, newsToneLabel } from '../core/copy'
 import { formatPct, formatWon, formatWonDelta, direction } from '../core/format'
 import { analyzeRound, type RoundHabits } from '../core/habits'
-import { calendarLabel, dayOf, LENGTHS, playPrice, TICKS_PER_SECOND, type Market } from '../core/market'
+import { calendarLabel, dayOf, playPrice, TICKS_PER_SECOND, type Market } from '../core/market'
 import { PRODUCTS } from '../core/products'
 import { completeRound } from '../core/session'
 import { save } from '../core/storage'
 import { advanceTo, createRound, isOver, setHolding, START_EQUITY, summarize } from '../core/round'
+import { Coach, NEWS_SHOW_AFTER } from '../core/tutorial'
 import { announce } from './announce'
 import type { Mode, Navigate, Screen } from './app'
+import { sfx, unlockAudio } from './audio'
 import { Chart } from './chart'
 import { h, haptic, icons, svg, toast } from './dom'
 import { logError } from './errors'
+import { DISCLAIMER } from './intro'
 import { anySheetOpen, confirmSheet } from './sheet'
+import { isTutorial } from './tutorial'
 
 const TICK_MS = 1000 / TICKS_PER_SECOND
 /** Trading days visible on the live chart. */
@@ -36,7 +41,18 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   const round = createRound(market, mode.kind === 'daily' ? save.accountBefore(mode.key) : START_EQUITY)
 
   const isLong = market.length === 'long'
-  const roundSeconds = LENGTHS[market.length].seconds
+  /** The first-launch guided round: coach lines, nothing recorded. */
+  const tutorial = isTutorial(market)
+  /** One tap buys, the next sells (settings). held[] means the same either way. */
+  let tapToggle = false
+  try {
+    tapToggle = save.getSettings().tapToggle
+  } catch {
+    // Default controls.
+  }
+  const coach = tutorial ? new Coach(market, tapToggle) : null
+  // From the market itself: the tutorial is a shortened short round.
+  const roundSeconds = Math.round(market.playTicks / TICKS_PER_SECOND)
   const playTicks = market.playTicks
   const historyTicks = market.historyTicks
   const windowTicks = WINDOW_DAYS[market.length] * market.ticksPerDay
@@ -46,14 +62,30 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   const delta = h('div', { class: 'equity-delta num flat' }, '0원 (0.00%)')
   const canvas = h('canvas')
   const countdown = h('div', { class: 'countdown num', 'aria-live': 'assertive' })
+  // News banner: what kind of news, whether it sounds good or bad for the
+  // price (what it implies, not what happens), the headline, and in the
+  // tutorial a coach line. With no headline the coach line stands alone.
   const newsTag = h('span', { class: 'news-tag' })
-  const newsText = h('span')
-  const news = h('div', { class: 'news', role: 'status', 'aria-live': 'polite' }, newsTag, newsText)
+  const toneTag = h('span', { class: 'news-tone' })
+  const newsText = h('span', { class: 'news-text' })
+  const coachText = h('span', { class: 'news-coach' })
+  const news = h(
+    'div',
+    { class: 'news', role: 'status', 'aria-live': 'polite' },
+    h('span', { class: 'news-tags' }, newsTag, toneTag),
+    h('span', { class: 'news-body' }, newsText, coachText),
+  )
   const padMain = h('span', { class: 'pad-main' }, '잠시만요')
   const padSub = h('span', { class: 'pad-sub num' }, '곧 시작해요')
   const pad = h(
     'div',
-    { class: 'pad idle', role: 'button', 'aria-label': '누르고 있는 동안 보유', 'aria-pressed': 'false', tabindex: 0 },
+    {
+      class: 'pad idle',
+      role: 'button',
+      'aria-label': tapToggle ? '톡 치면 사고, 한 번 더 치면 팔기' : '누르고 있는 동안 보유',
+      'aria-pressed': 'false',
+      tabindex: 0,
+    },
     padMain,
     padSub,
   )
@@ -68,8 +100,11 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   let lastCheckpoint = 0
   let raf = 0
   const inputs = new Set<Input>()
-  /** Screen-reader activation toggles holding instead of press-and-hold. */
+  /** Screen-reader activation, and tap-to-toggle, hold without an input down. */
   let latched = false
+  /** When the current press began, to spot taps too short to hold anything. */
+  let pressedAt = 0
+  let lastSecsLeft = roundSeconds
 
   const running = () => phase === 'live' && pauses.size === 0 && resumeLeft <= 0
 
@@ -78,7 +113,10 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
     pad.classList.toggle('on', holding)
     pad.classList.toggle('idle', !running())
     pad.setAttribute('aria-pressed', String(holding))
-    if (phase === 'countdown') return
+    if (phase === 'countdown') {
+      if (tapToggle) padSub.textContent = latched ? '시작과 함께 사요' : '톡 치면 시작과 함께 사요'
+      return
+    }
     if (holding) {
       const trade = round.equity / round.entryEquity - 1
       padMain.textContent = '보유 중'
@@ -90,21 +128,31 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
       padSub.className = 'pad-sub'
     } else if (resumeLeft > 0) {
       padMain.textContent = '곧 다시 시작해요'
-      padSub.textContent = '누르고 있으면 시작과 함께 사요'
+      if (tapToggle) padSub.textContent = latched ? '시작과 함께 사요' : '톡 치면 시작과 함께 사요'
+      else padSub.textContent = '누르고 있으면 시작과 함께 사요'
       padSub.className = 'pad-sub'
     } else {
-      padMain.textContent = '누르고 있으면 사요'
-      padSub.textContent = '떼면 바로 팔아요'
+      padMain.textContent = tapToggle ? '톡 치면 사요' : '누르고 있으면 사요'
+      padSub.textContent = tapToggle ? '한 번 더 치면 팔아요' : '떼면 바로 팔아요'
       padSub.className = 'pad-sub'
     }
   }
 
-  /** Opens or closes the position with feedback. No phase checks. */
-  const trade = (on: boolean) => {
+  /**
+   * Opens or closes the position with feedback. No phase checks. `byPlayer`
+   * is false for the forced sell when the round pauses.
+   */
+  const trade = (on: boolean, byPlayer = true) => {
     if (on === round.holding) return
     setHolding(round, on)
     if (round.holding !== on) return
     haptic(on ? 10 : 6)
+    if (on) sfx.buy()
+    else sfx.sell()
+    if (coach && byPlayer) {
+      if (on) coach.buy()
+      else coach.sell(round.tick, performance.now() - pressedAt)
+    }
     announce(on ? '샀어요' : `팔았어요, 이번 매매 ${formatPct(round.equity / round.entryEquity - 1, 1)}`)
     renderPad()
   }
@@ -112,6 +160,23 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   /** Holding follows the inputs, but only while time is running. */
   const sync = () => {
     if (running()) trade(inputs.size > 0 || latched)
+  }
+
+  /** A finger or key went down on the pad. */
+  const press = (input: Input) => {
+    unlockAudio()
+    if (tapToggle) {
+      // Each tap flips what the player wants; time decides when it happens.
+      pressedAt = performance.now()
+      latched = !latched
+      if (!running()) renderPad()
+      sync()
+      return
+    }
+    if (inputs.size === 0) pressedAt = performance.now()
+    latched = false
+    inputs.add(input)
+    sync()
   }
 
   const checkpoint = () => {
@@ -134,7 +199,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
     // Nobody can let go of a pad they can't see: sell first, then stop time.
     inputs.clear()
     latched = false
-    trade(false)
+    trade(false, false)
     pauses.add(reason)
     lastNow = null
     countdown.textContent = ''
@@ -149,27 +214,45 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
     renderPad()
   }
 
+  /** The result without saving it: the tutorial, or when saving failed. */
+  const unsavedResult = (): Parameters<Navigate>[0] => {
+    if (round.holding) setHolding(round, false)
+    advanceTo(round, playTicks)
+    const result = summarize(round)
+    let habits: RoundHabits | undefined
+    try {
+      habits = analyzeRound(market, result.held, result.fees)
+    } catch (e) {
+      logError(e, 'analyzeRound')
+    }
+    return { name: 'result', mode, market, result, habits, record: null, unlocked: [] }
+  }
+
   const finish = () => {
     if (phase === 'done') return
     phase = 'done'
     cancelAnimationFrame(raf)
     inputs.clear()
+    // The same tone for every result: no win jingle.
+    sfx.end()
     let route: Parameters<Navigate>[0]
-    try {
-      route = { name: 'result', mode, market, ...completeRound(mode, market, round) }
-    } catch (err) {
-      // Saving failed. The player still sees how the round went.
-      logError(err, 'completeRound')
-      if (round.holding) setHolding(round, false)
-      advanceTo(round, playTicks)
-      const result = summarize(round)
-      let habits: RoundHabits | undefined
+    if (tutorial) {
+      // A coached round is a lesson, not a record: it never enters the
+      // practice stats, unlocks or habit history. It does replace the intro.
       try {
-        habits = analyzeRound(market, result.held, result.fees)
-      } catch (e) {
-        logError(e, 'analyzeRound')
+        save.markIntroSeen()
+      } catch (err) {
+        logError(err, 'markIntroSeen')
       }
-      route = { name: 'result', mode, market, result, habits, record: null, unlocked: [] }
+      route = unsavedResult()
+    } else {
+      try {
+        route = { name: 'result', mode, market, ...completeRound(mode, market, round) }
+      } catch (err) {
+        // Saving failed. The player still sees how the round went.
+        logError(err, 'completeRound')
+        route = unsavedResult()
+      }
     }
     go(route)
   }
@@ -212,10 +295,11 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
       h(
         'p',
         { class: 'equity-label' },
-        `${mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : isLong ? '장기 모드 · 1년' : '연습'} · ${product.name}`,
+        `${mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : tutorial ? '처음 연습' : isLong ? '장기 모드 · 1년' : '연습'} · ${product.name} · 가상 돈`,
       ),
       equity,
       delta,
+      tutorial ? h('p', { class: 'play-note' }, DISCLAIMER) : null,
     ),
     h('div', { class: 'chart-wrap' }, canvas, news, countdown),
     pad,
@@ -234,9 +318,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
     }
     // A touch means the window has focus again.
     unpause('blur')
-    latched = false
-    inputs.add(e.pointerId)
-    sync()
+    press(e.pointerId)
   }
   const onUp = (e: PointerEvent) => {
     if (inputs.delete(e.pointerId)) sync()
@@ -254,9 +336,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
     if (target !== pad && target instanceof Element && target.closest('button, a, input, textarea, select, [contenteditable]')) return
     e.preventDefault()
     if (e.repeat || inputs.has(e.code)) return
-    latched = false
-    inputs.add(e.code)
-    sync()
+    press(e.code)
   }
   const onKeyUp = (e: KeyboardEvent) => {
     if (!inputs.has(e.code)) return
@@ -290,20 +370,38 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
   document.addEventListener('visibilitychange', onVisibility)
 
   let shownNews = -1
+  let shownCoach: string | null = null
   const updateNews = (tick: number) => {
-    const idx = market.news.findIndex((n) => tick >= n.at && tick < n.impactAt + 24)
-    if (idx === shownNews) return
+    const idx = market.news.findIndex((n) => tick >= n.at && tick < n.impactAt + NEWS_SHOW_AFTER)
+    const line = coach ? coach.line(tick, round.holding) : null
+    if (idx === shownNews && line === shownCoach) return
+    const fresh = idx !== shownNews
     shownNews = idx
-    if (idx < 0) {
+    shownCoach = line
+    if (idx < 0 && !line) {
       news.classList.remove('show')
       return
     }
-    const n = market.news[idx]
-    newsTag.textContent = n.kind === 'filing' ? product.filingLabel : '지라시'
-    newsTag.className = `news-tag ${n.kind}`
-    newsText.textContent = n.blindHeadline
+    if (idx < 0) {
+      // A coach line on its own.
+      news.classList.add('coach-only')
+      newsText.textContent = line
+      coachText.textContent = ''
+    } else {
+      const n = market.news[idx]
+      news.classList.remove('coach-only')
+      newsTag.textContent = newsKindLabel(market.product, n.kind)
+      newsTag.className = `news-tag ${n.kind}`
+      toneTag.textContent = newsToneLabel(n)
+      toneTag.className = `news-tone ${n.implied > 0 ? 'up' : 'down'}`
+      newsText.textContent = n.blindHeadline
+      coachText.textContent = line ?? ''
+      if (fresh) {
+        haptic(4)
+        sfx.news(n.kind)
+      }
+    }
     news.classList.add('show')
-    haptic(4)
   }
 
   const renderNumbers = () => {
@@ -347,6 +445,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
           if (!goLive()) return
         } else {
           countdown.textContent = String(Math.ceil(countdownLeft / (COUNTDOWN_MS / 3)))
+          if (coach) updateNews(0)
         }
       } else if (phase === 'live' && resumeLeft > 0) {
         resumeLeft -= dt
@@ -370,6 +469,11 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
       updateNews(Math.floor(playHead))
       const secsLeft = Math.max(0, Math.ceil(roundSeconds - elapsed / 1000))
       clock.textContent = clockText(secsLeft)
+      if (secsLeft !== lastSecsLeft) {
+        lastSecsLeft = secsLeft
+        // A soft tick for each of the last five seconds.
+        if (secsLeft >= 1 && secsLeft <= 5) sfx.tick()
+      }
       if (dateTag) dateTag.textContent = calendarLabel(dayOf(market, Math.floor(playHead)))
       clock.classList.toggle('hurry', secsLeft <= 5)
       renderNumbers()

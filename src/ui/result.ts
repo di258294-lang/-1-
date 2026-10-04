@@ -7,6 +7,7 @@ import { luckLesson, productLesson } from '../core/lessons'
 import type { LuckResult } from '../core/luck'
 import { PRODUCTS, type ProductKey } from '../core/products'
 import type { RoundResult } from '../core/round'
+import { newsKindLabel, newsToneLabel } from '../core/copy'
 import { coachingFor } from '../core/session'
 import { luckRank, shareText } from '../core/share'
 import type { Mode, Navigate, Screen } from './app'
@@ -16,6 +17,7 @@ import { logError } from './errors'
 import { lessonCard } from './lesson'
 import { luckCard, luckPlaceholder, luckTestApplies, runLuckTest } from './luck'
 import { missionCard, nextAction } from './missions'
+import { isTutorial } from './tutorial'
 import { startPractice } from './products'
 import { shareOut, shareUrl } from './share'
 
@@ -226,8 +228,9 @@ export function resultScreen(
     h('p', { class: 'fine recap-note' }, '끝나고 보면 뻔해 보여도, 그 순간에는 어느 쪽일지 알 수 없었어요.'),
     ...recapNews(market).map((n) => {
       const when = isLong ? calendarLabel(dayOf(market, n.at)) : `${Math.floor(n.at / TICKS_PER_SECOND)}초`
-      const kind = n.kind === 'filing' ? product.filingLabel : '소문'
-      const implied = n.implied > 0 ? '오를 거라는 소식' : '내릴 거라는 소식'
+      // What the headline implied (the live banner's own words), then what happened.
+      const kind = newsKindLabel(market.product, n.kind)
+      const implied = newsToneLabel(n)
       const outcome = n.actual > 0 ? '실제로는 올랐어요' : '실제로는 내렸어요'
       return h(
         'div',
@@ -321,12 +324,20 @@ export function resultScreen(
     ...unlocks,
     detailsToggle,
     details,
-    h(
-      'div',
-      { class: 'result-actions result-sticky' },
-      h('button', { class: 'btn btn-quiet', onclick: again }, mode.kind === 'daily' ? '연습 한 판' : '한 판 더'),
-      h('button', { class: 'btn btn-primary', onclick: share }, '공유하기'),
-    ),
+    // After the tutorial the next step is the real thing, not a share.
+    isTutorial(market)
+      ? h(
+          'div',
+          { class: 'result-actions result-sticky' },
+          h('button', { class: 'btn btn-quiet', onclick: again }, '한 번 더 연습'),
+          h('button', { class: 'btn btn-primary', onclick: () => go({ name: 'home' }) }, '이제 오늘의 차트'),
+        )
+      : h(
+          'div',
+          { class: 'result-actions result-sticky' },
+          h('button', { class: 'btn btn-quiet', onclick: again }, mode.kind === 'daily' ? '연습 한 판' : '한 판 더'),
+          h('button', { class: 'btn btn-primary', onclick: share }, '공유하기'),
+        ),
     h('p', { class: 'fine disclaimer' }, '가상 시장에서 나온 게임 결과예요. 실제 투자 성과나 투자 조언이 아니에요.'),
   )
 

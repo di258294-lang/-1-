@@ -1588,3 +1588,121 @@ button.cal-cell:active {
 .mission-chip .list-label small {
   font-size: 13px;
 }
+
+/* ---------- customer experience: news tags, coach, settings ---------- */
+
+.news-tags {
+  flex: none;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+}
+
+.news-tone {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.news-tone.up { color: var(--pad-up); }
+.news-tone.down { color: var(--pad-down); }
+
+.news-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.news-coach {
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.news-coach:empty {
+  display: none;
+}
+
+.news.coach-only .news-tags {
+  display: none;
+}
+
+.news.coach-only .news-text {
+  font-weight: 600;
+}
+
+.play-note {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+
+.sheet-scroll {
+  max-height: calc(100dvh - var(--safe-top) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sheet-note {
+  margin: -8px 0 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.settings-list {
+  margin: 8px 0 20px;
+}
+
+.setting-row .list-label small {
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.switch {
+  flex: none;
+  position: relative;
+  width: 46px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--ink-4);
+  transition: background-color 120ms;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface);
+  transition: transform 120ms;
+}
+
+[aria-checked='true'] > .switch {
+  background: var(--ink);
+}
+
+[aria-checked='true'] > .switch::after {
+  transform: translateX(18px);
+}
+
+.license-text {
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* Home top bar, right side: streak and the settings button. */
+.home-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.home-tools .icon-btn {
+  margin: 0 -10px 0 0;
+  color: var(--ink-2);
+}
