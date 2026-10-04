@@ -53,6 +53,7 @@ export function completeRound(mode: Mode, market: Market, round: Round): RoundOu
       measurable: habits.measurable,
       counts: habits.counts,
       luckPct: null,
+      evidence: habits.evidence,
     }
     save.recordHabit(record)
   }

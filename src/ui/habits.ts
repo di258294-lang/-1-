@@ -15,11 +15,11 @@ import { showProductSheet } from './products'
 import { shareOut, shareUrl } from './share'
 
 const MEASURES: Record<HabitKey, string> = {
-  holder: '손실 난 매매를 얼마나 깊게, 오래 들고 있었는지',
-  chicken: '수익 내고 판 뒤에도 가격이 계속 올랐는지',
+  holder: '손해 보는 중에 같은 시간 보통 흔들리는 폭보다 훨씬 깊게 버텼는지',
+  chicken: '수익 내고 팔고 나서, 아무 때나 판 것보다 가격이 더 올랐는지',
   scalper: '한 판 동안 얼마나 자주 사고팔았는지 (40초 기준으로 환산)',
-  chaser: '2초 사이 급하게 오른 직후에 샀는지',
-  rumor: '지라시가 뜨고 가격이 움직이기 전에 반응했는지',
+  chaser: '2초 사이 급하게 오른 직후에, 우연보다 자주 샀는지',
+  rumor: '지라시가 뜨고 가격이 움직이기 전에, 우연보다 자주 반응했는지',
 }
 
 export function habitsScreen(go: Navigate): Screen {
@@ -70,7 +70,7 @@ export function habitsScreen(go: Navigate): Screen {
     { class: 'meters' },
     ...HABIT_KEYS.map((k) => {
       const v = Math.round(profile.scores[k] * 100)
-      const lead = profile.type !== 'machine' && k === strongest
+      const lead = profile.type !== 'machine' && profile.type !== 'watcher' && k === strongest
       return h(
         'div',
         { class: `meter${lead ? ' lead' : ''}` },
