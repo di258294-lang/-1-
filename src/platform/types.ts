@@ -85,8 +85,12 @@ export interface Platform {
    * Take over the system back action (Android back button, Toss back event).
    * While a handler is registered the default back behavior is blocked, so
    * the handler must navigate back or exit. Returns an unsubscribe function.
+   *
+   * The handler returns false when the game did not use the press (back on
+   * home in a browser tab); the web platform then lets the browser go back.
+   * Other platforms ignore the return value.
    */
-  onBack(handler: () => void): () => void
+  onBack(handler: () => boolean | void): () => void
   /** Leave the game (close the mini-app / app; on the web, go back past the game). */
   exit(): Promise<void>
   /** iOS edge swipe back. Turn off during a round so a swipe cannot quit it. */

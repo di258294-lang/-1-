@@ -105,11 +105,6 @@ function handleBack(): boolean {
 }
 
 function confirmExit() {
-  // A browser tab just goes back to where the player came from.
-  if (platform.kind === 'web') {
-    void platform.exit()
-    return
-  }
   confirmSheet({
     title: 'HOLD를 끝낼까요?',
     body: '오늘의 기록은 저장돼 있어요.',
@@ -144,7 +139,11 @@ async function boot() {
   migrateLegacyNick()
   initReach()
   platform.onBack(() => {
-    if (!handleBack()) confirmExit()
+    if (handleBack()) return true
+    // A browser tab: the platform steps back past the page itself.
+    if (platform.kind === 'web') return false
+    confirmExit()
+    return true
   })
   platform.onOpenUrl((url) => {
     const { code } = takeChallengeCode(url)

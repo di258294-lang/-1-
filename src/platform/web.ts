@@ -186,17 +186,13 @@ export const platform: Platform = {
 
   onBack(handler) {
     if (!native) {
-      // Browser back: one guard entry sits above the page. Back pops it, the
-      // game handles it like the Android button, and the guard goes back.
-      const onPop = () => {
-        if (leaving) return
-        try {
-          history.pushState(GUARD, '')
-        } catch {
-          return
-        }
-        handler()
-      }
+      // Browser back: one guard entry sits above the page. Back pops it and
+      // the game handles it like the Android button. Only when the game took
+      // the press does the guard go back up; otherwise (back on home) the
+      // browser carries on to wherever the player came from. When the page
+      // is the tab's first entry (a new tab, KakaoTalk's in-app browser)
+      // there is nothing before it, and the next back closes or leaves the
+      // tab as it would on any page.
       // Armed on the first tap or key: browsers skip history entries that a
       // page adds before the user has touched it.
       const arm = () => {
@@ -207,10 +203,40 @@ export const platform: Platform = {
         }
       }
       const opts = { capture: true, once: true } as const
-      window.addEventListener('pointerdown', arm, opts)
-      window.addEventListener('keydown', arm, opts)
+      let on = true
+      const listenArm = () => {
+        if (!on) return
+        window.addEventListener('pointerdown', arm, opts)
+        window.addEventListener('keydown', arm, opts)
+      }
+      const onPop = () => {
+        if (leaving) return
+        if (handler() !== false) {
+          try {
+            history.pushState(GUARD, '')
+          } catch {
+            // History blocked: the next back leaves.
+          }
+          return
+        }
+        // Not handled: step back past the page. If there is no entry before
+        // it this does nothing, and the player stays with no guard; the next
+        // tap arms it again so a later round is still protected.
+        leaving = true
+        setTimeout(() => {
+          leaving = false
+          listenArm()
+        }, 1000)
+        try {
+          history.back()
+        } catch {
+          // Nothing to go back to.
+        }
+      }
+      listenArm()
       window.addEventListener('popstate', onPop)
       return () => {
+        on = false
         window.removeEventListener('pointerdown', arm, opts)
         window.removeEventListener('keydown', arm, opts)
         window.removeEventListener('popstate', onPop)
@@ -227,10 +253,12 @@ export const platform: Platform = {
 
   async exit() {
     if (!native) {
-      // Past the guard and the game, to wherever the player came from.
+      // Past the guard (when it is up) and the game, to wherever the player
+      // came from. Back on home never comes here: onBack steps back itself.
+      const guarded = (history.state as typeof GUARD | null)?.holdBack === true
       leaving = true
       setTimeout(() => (leaving = false), 1000)
-      history.go(-2)
+      history.go(guarded ? -2 : -1)
       return
     }
     try {
