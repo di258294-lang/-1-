@@ -132,7 +132,7 @@ const pct0 = (x: number) => `${Math.round(x * 100)}%`
 const per40 = (m: RoundMetrics) => (m.isLong ? `40초당 ${m.t40.toFixed(1)}번` : `${m.trades}번`)
 /** A holding time in the round's own unit: seconds in a short round, days in a long one. */
 const span = (m: RoundMetrics, sec: number) =>
-  m.isLong ? `${Math.round((sec * TICKS_PER_SECOND) / m.ticksPerDay)}일` : `${sec.toFixed(1)}초`
+  m.isLong ? `${Math.round((sec * TICKS_PER_SECOND) / m.ticksPerDay)}일` : `${Number(sec.toFixed(1))}초`
 const roundSec = (m: RoundMetrics) => m.playTicks / TICKS_PER_SECOND
 /** "30초였어요", "41일이었어요", "45%였어요": the past copula after a number with its unit. */
 const was = (word: string) => {
