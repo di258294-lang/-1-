@@ -1167,3 +1167,321 @@ button {
 .toss .topbar {
   padding-right: calc(var(--safe-right, 0px) + 80px);
 }
+
+/* ---------- growth: week strip, season recap, records ---------- */
+
+.wk-strip {
+  margin-top: 10px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+
+.wk {
+  display: flex;
+  gap: 4px;
+}
+
+.wk-cell {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: 26px;
+}
+
+.wk-day {
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--ink-3);
+}
+
+.wk-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink-3);
+  background: var(--well);
+}
+
+.wk-played .wk-dot {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.wk-frozen .wk-dot {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--ink-3);
+  color: var(--ink-2);
+}
+
+.wk-today .wk-dot {
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--ink);
+  color: var(--ink);
+}
+
+.wk-future .wk-dot,
+.wk-before .wk-dot {
+  background: none;
+  color: var(--ink-4);
+}
+
+.wk-now .wk-day {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.wk-side {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.wk-lg {
+  gap: 0;
+  justify-content: space-between;
+}
+
+.wk-lg .wk-cell {
+  width: 36px;
+  gap: 4px;
+}
+
+.wk-lg .wk-day {
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.wk-lg .wk-dot {
+  width: 30px;
+  height: 30px;
+  font-size: 13px;
+}
+
+.wk-sheet {
+  margin: 16px 0 0;
+}
+
+.habit-card .wk-sheet {
+  margin: 10px 0 6px;
+}
+
+.wk-legend {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.wk-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wk-key .wk-cell {
+  width: auto;
+}
+
+.wk-key .wk-dot {
+  width: 12px;
+  height: 12px;
+}
+
+.wk-tokens {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.wk-actions {
+  display: grid;
+}
+
+/* Short phones (360x640): the week strip carries the weekday, so the date
+   line and the lede go (the rules sheet shows before the first round), and
+   the chart may shrink to nothing rather than spill over the rows below. */
+@media (max-height: 700px) {
+  .home .home-date,
+  .home .home-lede { display: none; }
+  .home .wk-strip { margin-top: 0; }
+  .home .teaser { overflow: hidden; padding-top: 14px; padding-bottom: 10px; }
+  .home .teaser canvas { min-height: 0; }
+}
+
+.recap-card {
+  position: relative;
+  margin-top: 16px;
+  background: var(--surface);
+  border-radius: var(--r-lg);
+}
+
+.recap-card-body {
+  width: 100%;
+  display: grid;
+  gap: 1px;
+  padding: 12px 18px;
+  text-align: left;
+}
+
+.recap-card-body .habit-kicker {
+  padding-right: 32px;
+}
+
+.recap-card-body .habit-title {
+  font-size: 17px;
+}
+
+.recap-card-body .habit-line {
+  font-size: 13px;
+}
+
+.recap-close {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+}
+
+.recap-medal {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.records .habit-card {
+  margin-top: 16px;
+}
+
+.records .list {
+  margin-top: 16px;
+}
+
+.rec-sec {
+  margin-top: 24px;
+}
+
+.rec-h {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.rec-sec .list {
+  margin-top: 8px;
+}
+
+.rec-ghost {
+  color: var(--ink-3);
+}
+
+.cal + .cal {
+  margin-top: 20px;
+}
+
+.cal-grid {
+  margin-top: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.cal-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.cal-head span {
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.cal-cell {
+  height: 36px;
+  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+button.cal-cell:active {
+  transform: scale(0.94);
+}
+
+.cal-beat {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.cal-behind {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--ink-4);
+}
+
+.cal-abandoned {
+  box-shadow: inset 0 0 0 1.5px var(--ink-4);
+  background-image: linear-gradient(135deg, transparent 46%, var(--ink-4) 46%, var(--ink-4) 54%, transparent 54%);
+}
+
+.cal-frozen {
+  box-shadow: inset 0 0 0 1.5px var(--ink-3);
+  border-radius: 50%;
+  width: 36px;
+  justify-self: center;
+}
+
+.cal-missed {
+  background: var(--well);
+}
+
+.cal-open {
+  color: var(--ink-2);
+}
+
+.cal-today {
+  box-shadow: inset 0 0 0 2px var(--ink);
+  color: var(--ink);
+}
+
+.cal-future,
+.cal-before {
+  color: var(--ink-4);
+  font-weight: 400;
+}
+
+.cal-legend {
+  margin-top: 12px;
+}
+
+.cal-key {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.cal-key.cal-frozen {
+  width: 14px;
+  border-radius: 50%;
+}
