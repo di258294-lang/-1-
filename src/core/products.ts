@@ -42,7 +42,7 @@ export type Product = {
   name: string
   /** One line shown before playing. */
   pitch: string
-  /** Label for confirmed news. Rumors are always 지라시. */
+  /** Label for confirmed news in the recap. Rumors are always 소문. */
   filingLabel: string
   /** How the asset is referred to in headlines during the round. */
   blindName: string
@@ -86,8 +86,8 @@ export const PRODUCTS: Record<ProductKey, Product> = {
   stock: {
     key: 'stock',
     name: '주식',
-    pitch: '공시와 지라시에 출렁이는 한 회사의 주식이에요.',
-    filingLabel: '공시',
+    pitch: '회사 발표와 소문에 출렁이는 한 회사의 주식이에요.',
+    filingLabel: '공식 발표',
     blindName: '이 종목',
     assets: STOCKS,
     filings: {

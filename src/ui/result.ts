@@ -11,6 +11,7 @@ import { Chart } from './chart'
 import { h, icons, svg } from './dom'
 import { logError } from './errors'
 import { luckCard, luckPlaceholder, luckTestApplies, runLuckTest } from './luck'
+import { isTutorial } from './tutorial'
 import { startPractice } from './products'
 import { shareResult } from './share'
 
@@ -236,12 +237,20 @@ export function resultScreen(
     ),
     recapToggle,
     recap,
-    h(
-      'div',
-      { class: 'result-actions' },
-      h('button', { class: 'btn btn-quiet', onclick: again }, mode.kind === 'daily' ? '연습 한 판' : '한 판 더'),
-      h('button', { class: 'btn btn-primary', onclick: share }, '공유하기'),
-    ),
+    // After the tutorial the next step is the real thing, not a share.
+    isTutorial(market)
+      ? h(
+          'div',
+          { class: 'result-actions' },
+          h('button', { class: 'btn btn-quiet', onclick: again }, '한 번 더 연습'),
+          h('button', { class: 'btn btn-primary', onclick: () => go({ name: 'home' }) }, '이제 오늘의 차트'),
+        )
+      : h(
+          'div',
+          { class: 'result-actions' },
+          h('button', { class: 'btn btn-quiet', onclick: again }, mode.kind === 'daily' ? '연습 한 판' : '한 판 더'),
+          h('button', { class: 'btn btn-primary', onclick: share }, '공유하기'),
+        ),
     h('p', { class: 'fine disclaimer' }, '가상 시장에서 나온 게임 결과예요. 실제 투자 성과나 투자 조언이 아니에요.'),
   )
 
