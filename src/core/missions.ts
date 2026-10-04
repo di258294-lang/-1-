@@ -1,3 +1,4 @@
+import { daysBetween, weekIndex as weekOf } from './daily'
 import { HABIT_KEYS, PROFILE_MIN_ROUNDS, tickVolatility, tradesFrom, TYPE_MIN, type HabitKey, type Profile, type RoundHabits } from './habits'
 import { playPrice, TICKS_PER_SECOND, type Market } from './market'
 import type { RoundResult } from './round'
@@ -510,14 +511,8 @@ const MACHINE: MissionId[] = ['rules3', 'filingOnly', 'longHold']
 /** Every no-habit mission, for the fallback when a whole chain was passed recently. */
 const SKILL_POOL: MissionId[] = [...new Set<MissionId>([...MACHINE, ...WATCHER, ...STARTER])]
 
-const DAY_MS = 86_400_000
-const dayIndex = (key: string) => {
-  const t = Date.parse(`${key}T00:00:00Z`)
-  return Number.isNaN(t) ? 0 : Math.round(t / DAY_MS)
-}
-export const daysBetween = (from: string, to: string) => dayIndex(to) - dayIndex(from)
-/** Monday-based week number (1970-01-05 was a Monday, day 4). */
-export const weekOf = (key: string) => Math.floor((dayIndex(key) - 4) / 7)
+// Calendar math lives in daily.ts; re-exported for callers that import it from here.
+export { daysBetween, weekOf }
 
 export type MissionPick = { id: MissionId; recheck?: boolean; starter?: boolean }
 

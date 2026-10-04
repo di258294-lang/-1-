@@ -1,7 +1,6 @@
-import { nextKey, previousKey } from './daily'
+import { daysBetween, nextKey, previousKey, weekStart } from './daily'
 import { playPrice, TICKS_PER_SECOND, type Market } from './market'
 import { cashRatePerTick } from './round'
-import { weekStart } from './streak'
 
 /**
  * The weekly constraint challenge: one rule per KST week (Monday to Sunday),
@@ -101,9 +100,6 @@ export type WeeklyProgress = {
   goal: number
   done: boolean
 }
-
-const DAY_MS = 86_400_000
-const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY_MS)
 
 /** The rule of the week containing `key`. */
 export function weeklyRule(key: string): WeeklyRule {
