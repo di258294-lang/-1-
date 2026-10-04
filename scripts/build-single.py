@@ -42,9 +42,13 @@ def main(target: str) -> None:
 
     title = re.search(r'<title>(.*?)</title>', html).group(1)
     desc = re.search(r'<meta name="description" content="([^"]*)"', html).group(1)
+    # Link-preview tags (og:*, twitter:*) carry over as they are; og:image is
+    # an absolute URL, so it needs no inlining.
+    social = ''.join(m + '\n' for m in re.findall(r'<meta (?:property="og:|name="twitter:)[^>]*>', html))
     page = (
         f'<title>{title}</title>\n'
         f'<meta name="description" content="{desc}">\n'
+        f'{social}'
         f'<style>{css}{host}</style>\n'
         '<div id="app"></div>\n'
         f'<script type="module">{js}</script>\n'
