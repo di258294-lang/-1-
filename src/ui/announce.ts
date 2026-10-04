@@ -17,3 +17,9 @@ export function announce(message: string) {
     el.textContent = message
   }, 50)
 }
+
+/** Empties the live region, so a new screen never inherits the last one's message (ux2 P1-11). */
+export function clearAnnouncements() {
+  clearTimeout(pending)
+  if (region) region.textContent = ''
+}

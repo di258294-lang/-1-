@@ -25,9 +25,10 @@ export function productOf(key: string): ProductKey {
 }
 
 /**
- * Seven cells, Monday to Sunday: the weekday, and a dot with that day's
- * product initial. Filled = played, ring = kept by a 휴장일, grey = missed,
- * outlined = today, faint = still to come. Decorative: the caller labels it.
+ * Seven cells, Monday to Sunday: the weekday and a dot, nothing else (ux2
+ * P1-6: product initials read as nonsense, and 금 collides with Friday).
+ * Filled = played, ring = kept by a 휴장일, grey = missed, outlined = today,
+ * faint = still to come. Decorative: the caller labels it, with the product.
  */
 export function weekCells(state: StreakState, today: string, size: 'sm' | 'lg' = 'sm') {
   const row = h('span', { class: `wk wk-${size}`, 'aria-hidden': 'true' })
@@ -37,7 +38,7 @@ export function weekCells(state: StreakState, today: string, size: 'sm' | 'lg' =
         'span',
         { class: `wk-cell wk-${s}${key === today ? ' wk-now' : ''}` },
         h('span', { class: 'wk-day' }, WEEKDAYS[i]),
-        h('span', { class: 'wk-dot' }, PRODUCTS[productOf(key)].name[0]),
+        h('span', { class: 'wk-dot' }),
       ),
     )
   })
@@ -61,11 +62,16 @@ function weekDays(state: StreakState): Cell[] {
 const word = (c: Cell, today: string) =>
   c.state === 'before' ? '기록 전' : c.key === today && c.state === 'played' ? '오늘 한 날' : STATE_WORD[c.state]
 
-/** "월 한 날, 화 빠진 날, ..." for screen readers. */
+/** "월 · 주식 · 한 날, 화 · 채권 · 빠진 날, ..." for screen readers. */
 export function weekLabel(state: StreakState, today: string) {
   return weekDays(state)
-    .map((c, i) => `${WEEKDAYS[i]} ${word(c, today)}`)
+    .map((c, i) => `${WEEKDAYS[i]} · ${PRODUCTS[productOf(c.key)].name} · ${word(c, today)}`)
     .join(', ')
+}
+
+/** The sheet's written list: "월요일 주식 · 화요일 채권 · …", products only here and in the label. */
+function weekProducts(state: StreakState) {
+  return state.week.map((d, i) => `${WEEKDAYS[i]}요일 ${PRODUCTS[productOf(d.key)].name}`).join(' · ')
 }
 
 function nextFreezeLine(state: StreakState, today: string) {
@@ -109,6 +115,7 @@ export function showStreakSheet(state: StreakState, today: string, onRecords?: (
       { class: 'sheet' },
       h('h2', { id: 'streak-title' }, state.days > 0 ? `${state.days}일 연속이에요` : '이번 주 기록'),
       h('div', { class: 'wk-sheet', role: 'img', 'aria-label': weekLabel(state, today) }, weekCells(state, today, 'lg'), weekLegend()),
+      h('p', { class: 'sheet-note' }, `이번 주 오늘의 차트: ${weekProducts(state)}`),
       h('p', { class: 'sheet-body' }, FREEZE_RULE, h('br'), h('b', { class: 'wk-tokens' }, nextFreezeLine(state, today))),
       h(
         'div',
@@ -133,7 +140,7 @@ export function showStreakSheet(state: StreakState, today: string, onRecords?: (
   close = openSheet(scrim, { initialFocus: ok })
 }
 
-/** The home strip: one tappable row, weekdays left, 휴장일 count right. */
+/** The home strip: one tappable row of weekdays and dots. The 휴장일 count lives in the sheet. */
 export function weekStripButton(state: StreakState, today: string, onRecords: () => void) {
   return h(
     'button',
@@ -143,11 +150,6 @@ export function weekStripButton(state: StreakState, today: string, onRecords: ()
       onclick: () => showStreakSheet(state, today, onRecords),
     },
     weekCells(state, today),
-    h(
-      'span',
-      { class: 'wk-side', 'aria-hidden': 'true' },
-      h('span', { class: 'num' }, `휴장일 ${state.tokens}개`),
-      h('span', { class: 'chev' }, '›'),
-    ),
+    h('span', { class: 'wk-side', 'aria-hidden': 'true' }, h('span', { class: 'chev' }, '›')),
   )
 }

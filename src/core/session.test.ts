@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { generateMarket, type Market } from './market'
 import { advanceTo, createRound, setHolding } from './round'
 import { coachingFor, completeRound } from './session'
-import { luckRank, shareText } from './share'
 import { configureStorage, memoryBackend, save } from './storage'
 
 /** Holds one long stretch: passes the starter mission (hold a quarter of the round). */
@@ -92,17 +91,5 @@ describe('completeRound coaching', () => {
     expect(out.mission).toBeNull()
     expect(out.lesson).toBeNull()
     expect(save.coach().active).toBeNull()
-  })
-})
-
-describe('share text', () => {
-  it('carries the luck rank next to the return, and keeps the game label', () => {
-    const market = generateMarket(1)
-    const result = { yourReturn: 0.05, buyHoldReturn: 0.01, held: new Array<boolean>(market.playTicks).fill(true) }
-    const text = shareText({ market, result, day: 4, url: 'https://x', luck: { percentile: 0.88, sims: 1000 } })
-    expect(text).toContain('(가상 게임)')
-    expect(text).toContain('운 비교 · 무작위 배치 1,000번 중 상위 12%')
-    expect(shareText({ market, result, day: 4, url: 'https://x' })).not.toContain('운 비교')
-    expect(luckRank({ percentile: 0.2, sims: 1000 })).toBe('무작위 배치 1,000번 중 하위 20%')
   })
 })

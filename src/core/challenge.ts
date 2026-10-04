@@ -1,6 +1,7 @@
 import { dailySeed, EPOCH_KEY, nextKey } from './daily'
 import { ENGINE_VERSION, type RoundLength } from './market'
 import { formatPct } from './format'
+import { shownPct } from './copy'
 import { PRODUCTS, type ProductKey } from './products'
 
 /**
@@ -267,10 +268,13 @@ export function takeChallengeCode(href: string): { code: string | null; rest: st
 
 export type Outcome = 'win' | 'lose' | 'tie'
 
-/** Head to head at the precision the screen shows (0.1%p). */
+/**
+ * Head to head at the precision the screen shows (0.1%), from the very
+ * numbers formatPct prints, so "-1.3% vs -1.3%" is always a tie.
+ */
 export function outcome(you: number, friend: number): { result: Outcome; gap: number } {
-  const a = Math.round(you * 1000)
-  const b = Math.round(friend * 1000)
+  const a = Math.round(shownPct(you) * 10)
+  const b = Math.round(shownPct(friend) * 10)
   return { result: a > b ? 'win' : a < b ? 'lose' : 'tie', gap: Math.abs(a - b) / 1000 }
 }
 

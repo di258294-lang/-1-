@@ -13,26 +13,51 @@ export function runLuckTest(market: Market, held: boolean[], yourReturn?: number
   return luckTest(market, held, LUCK_SIMS, yourReturn)
 }
 
-/** Whether luckTest() will have anything to compare (mirrors its early exit). */
-export function luckTestApplies(market: Market, held: boolean[]) {
+function heldShare(market: Market, held: boolean[]) {
   let heldTicks = 0
   for (let t = 0; t < market.playTicks; t++) if (held[t]) heldTicks++
-  return heldTicks > 0 && heldTicks < market.playTicks - 2
+  return heldTicks / market.playTicks
 }
+
+/**
+ * Held almost all round, or almost none of it: placing that hold at random
+ * barely moves it, so the percentile would be noise (ux2 P0-3). Under 10%
+ * or over 90% the test is skipped.
+ */
+export const LUCK_MIN_HELD = 0.1
+export const LUCK_MAX_HELD = 0.9
+
+/** Whether the timing comparison runs for this round. */
+export function luckTestApplies(market: Market, held: boolean[]) {
+  const share = heldShare(market, held)
+  return share >= LUCK_MIN_HELD && share <= LUCK_MAX_HELD
+}
+
+/** Why the comparison was skipped, for a round that held at least once; else null. */
+export function luckSkipLine(market: Market, held: boolean[]): string | null {
+  const share = heldShare(market, held)
+  if (share > LUCK_MAX_HELD) return '거의 내내 들고 있어서 운 비교는 하지 않았어요.'
+  if (share > 0 && share < LUCK_MIN_HELD) return '거의 내내 현금으로 있어서 운 비교는 하지 않았어요.'
+  return null
+}
+
+const KICKER = '타이밍 비교'
+/** stats2 §5: the comparison flatters one style and is not a skill score. */
+export const LUCK_CAVEAT = '작은 수익에서 바로 파는 방식은 이 비교에서 높게 나오기 쉬워요. 실력을 재는 점수가 아니에요.'
 
 /** Same footprint as the card, shown while the replays run. */
 export function luckPlaceholder() {
   return h(
     'section',
     { class: 'luck luck-pending', 'aria-busy': 'true' },
-    h('p', { class: 'habit-kicker' }, '운일까 실력일까'),
+    h('p', { class: 'habit-kicker' }, KICKER),
     h('h2', { class: 'habit-title' }, '무작위로 누른 판들과 비교하고 있어요'),
     h('div', { class: 'hist-bars', 'aria-hidden': 'true' }),
   )
 }
 
 /**
- * Skill or luck: where this round sits among random placements of the
+ * Timing comparison: where this round sits among random placements of the
  * player's own holding stretches on the same chart, drawn as a histogram
  * with the player marked.
  * `bridge` is an extra sentence shown under the verdict.
@@ -58,7 +83,7 @@ export function luckCard(result: LuckResult, bridge?: string | null) {
   return h(
     'section',
     { class: 'luck' },
-    h('p', { class: 'habit-kicker' }, '운일까 실력일까'),
+    h('p', { class: 'habit-kicker' }, KICKER),
     h('h2', { class: 'habit-title num' }, verdict.headline),
     h(
       'figure',
@@ -79,6 +104,6 @@ export function luckCard(result: LuckResult, bridge?: string | null) {
     ),
     h('p', { class: 'habit-line' }, verdict.line),
     bridge ? h('p', { class: 'habit-line luck-bridge' }, bridge) : null,
-    h('p', { class: 'luck-note' }, verdict.note),
+    h('p', { class: 'luck-note' }, verdict.note, ' ', LUCK_CAVEAT),
   )
 }

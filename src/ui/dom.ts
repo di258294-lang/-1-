@@ -68,3 +68,16 @@ function hapticsOn() {
 export function cssVar(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
+
+/**
+ * One quiet line when the save can't be written (QA #3): the browser's
+ * storage is full or blocked, or the save came from a newer version.
+ */
+export function storageWarning(): HTMLElement | null {
+  try {
+    if (!save.lastWriteFailed() && !save.readOnly()) return null
+  } catch {
+    // Can't even ask: say so.
+  }
+  return h('p', { class: 'fine storage-warn', role: 'status' }, '기록이 저장되지 않고 있어요. 브라우저 저장 공간을 확인해 주세요.')
+}

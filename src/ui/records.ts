@@ -17,7 +17,8 @@ import { skillCopy, skillRoundsCounted, skillTest, SKILL_MIN_ROUNDS } from '../c
 import { save, type DailyHistoryItem } from '../core/storage'
 import type { Navigate, Screen } from './app'
 import { h, icons, svg } from './dom'
-import { showIntro } from './intro'
+import { withIntro } from './gate'
+import { LUCK_CAVEAT } from './luck'
 import { showProductSheet } from './products'
 import { archivedLabel, fromArchive, MEDAL_LINE, MEDAL_RULE, seasonDetail, seasonVersus, SEASON_RULE } from './season'
 import { openSheet } from './sheet'
@@ -43,15 +44,6 @@ function dayLabel(key: string) {
   return `${m}월 ${d}일`
 }
 
-/** Rules show once before the first round, wherever it starts from. */
-function withIntro(start: () => void) {
-  if (save.seenIntro()) return start()
-  showIntro(() => {
-    save.markIntroSeen()
-    start()
-  })
-}
-
 /**
  * A past daily chart, replayed as an ordinary practice round: same seed and
  * product, so the same chart, but it never touches the daily record, the
@@ -74,10 +66,12 @@ function showReplaySheet(go: Navigate, key: string, played: DailyHistoryItem | u
       class: 'btn btn-primary',
       onclick: () => {
         close()
-        withIntro(() => startReplay(go, key))
+        // The rules first for a newcomer, without marking them seen: home's
+        // 시작하기 still runs the tutorial before the daily (arch2 P1-1).
+        withIntro(go, () => startReplay(go, key), 'rules')
       },
     },
-    played ? '복기하기' : '해볼게요',
+    played ? '다시 보기' : '해볼게요',
   )
   const body = played
     ? played.abandoned
@@ -96,7 +90,7 @@ function showReplaySheet(go: Navigate, key: string, played: DailyHistoryItem | u
     h(
       'div',
       { class: 'sheet' },
-      h('h2', { id: 'replay-title' }, `${dayLabel(key)} 차트${played ? ' 복기' : ''}`),
+      h('h2', { id: 'replay-title' }, `${dayLabel(key)} 차트${played ? ' 다시 보기' : ''}`),
       h('p', { class: 'sheet-body' }, body, ' 계좌와 연속 기록에는 들어가지 않아요.'),
       h(
         'div',
@@ -134,7 +128,7 @@ function calendar(
       const n = String(Number(key.slice(8)))
       const word = fresh ? '' : CELL_WORD[raw]
       if (canReplay(key, today)) {
-        const label = `${dayLabel(key)}${word ? `, ${word}` : ''}. ${entry ? '복기하기' : '지난 차트 해보기'}`
+        const label = `${dayLabel(key)}${word ? `, ${word}` : ''}. ${entry ? '다시 보기' : '지난 차트 해보기'}`
         row.append(
           h(
             'button',
@@ -230,7 +224,7 @@ export function recordsScreen(go: Navigate): Screen {
     calendar(go, thisMonth, today, byKey, frozen),
     lastHasDays ? calendar(go, lastMonth, today, byKey, frozen) : null,
     calLegend(),
-    h('p', { class: 'fine' }, '지난 날을 누르면 그날 차트를 연습으로 해볼 수 있어요. 이미 한 날은 복기예요.'),
+    h('p', { class: 'fine' }, '지난 날을 누르면 그날 차트를 연습으로 해볼 수 있어요. 이미 한 날도 다시 볼 수 있어요.'),
   )
 
   const seasonLine = {
@@ -254,14 +248,14 @@ export function recordsScreen(go: Navigate): Screen {
   const skillCard = h(
     'section',
     { class: 'habit-card' },
-    h('p', { class: 'habit-kicker' }, '운일까 실력일까 · 여러 판 모아 보기'),
+    h('p', { class: 'habit-kicker' }, '타이밍 비교 · 여러 판 모아 보기'),
     h('h2', { class: 'habit-title num' }, copy ? copy.headline : `${SKILL_MIN_ROUNDS}판 이상 하면 보여줘요`),
     h(
       'p',
       { class: 'habit-line num' },
       copy ? copy.line : `사고판 판이 지금 ${counted}판이에요. ${SKILL_MIN_ROUNDS - counted}판 더 하면 돼요.`,
     ),
-    h('p', { class: 'fine' }, '내가 사고판 횟수와 보유 시간은 그대로 두고, 타이밍만 무작위로 바꾼 판들과 비교했어요.'),
+    h('p', { class: 'fine' }, '내가 사고판 횟수와 보유 시간은 그대로 두고, 타이밍만 무작위로 바꾼 판들과 비교했어요. ', LUCK_CAVEAT),
   )
 
   const totals = h(
@@ -320,7 +314,8 @@ export function recordsScreen(go: Navigate): Screen {
     'section',
     { class: 'list' },
     listRow('내 매매 습관', null, '', () => go({ name: 'habits' })),
-    listRow('장기 모드', '1년치 시장을 5분에', '5분', () => withIntro(() => showProductSheet(go, 'long'))),
+    // Long mode lives here, off the home screen (ux2 P1-9).
+    listRow('장기 모드', '1년치 시장을 5분에', '5분', () => withIntro(go, () => showProductSheet(go, 'long'), 'rules')),
   )
 
   return {
