@@ -78,8 +78,9 @@
 ### 스토어 등록정보
 아래 [등록 문구](#스토어-등록-문구)를 그대로 쓰면 돼요.
 - 앱 아이콘 512×512: `store/android/icon-512.png`
-- 그래픽 이미지 1024×500: `store/android/feature-graphic.png`
-- 휴대전화 스크린샷: `store/android/1-home.png` ~ `4-habits.png`
+- 그래픽 이미지 1024×500: `store/play/feature-graphic.png`
+- 휴대전화 스크린샷 1080×1920: `store/play/1-hold.png` ~ `6-challenge.png` (캡션·가상 표기 포함)
+- 만드는 법은 [출시 이미지 체크리스트](#출시-이미지-체크리스트)
 
 ### 정책 설문 답변
 | 항목 | 답 |
@@ -116,7 +117,7 @@ App Store Connect → TestFlight → 내부 테스터 추가. 심사 없이 바�
 | 항목 | 값 |
 |---|---|
 | 카테고리 | 게임 → 시뮬레이션 (보조: 퍼즐) |
-| 스크린샷 6.9" (1320×2868) | `store/ios/1-home.png` ~ `4-habits.png` |
+| 스크린샷 6.9" (1320×2868) | `store/appstore/1-hold.png` ~ `6-challenge.png` (`npm run store-shots`) |
 | 개인정보 처리방침 URL | `https://di258294-lang.github.io/-1-/privacy.html` |
 | 지원 URL | `https://di258294-lang.github.io/-1-/support.html` |
 | 앱 개인정보 보호 | **데이터를 수집하지 않음** |
@@ -141,14 +142,20 @@ App Store Connect → TestFlight → 내부 테스터 추가. 심사 없이 바�
    - 또는 게임물관리위원회(GRAC)에서 직접 받은 등급분류 증명서 PDF.
 4. **라이트 모드만.** 토스는 다크 모드를 지원하지 않아서 토스 빌드는 항상 밝은 테마로 떠요 (`toss.ts`가 `data-theme="light"` 고정).
 
-### 콘솔에 올릴 이미지
-| 항목 | 규격 |
-|---|---|
-| 로고 | 600×600 PNG, 각진 정사각형 (둥근 모서리 금지) |
-| 썸네일 (가로형 대표 이미지) | 1932×828 PNG |
-| 스크린샷 (세로형) | 636×1048 PNG, **최소 3장** |
+### 이름 (확정)
+- 앱 이름 **`홀드`**, 영어 이름 **`HOLD Timing`**, 부제 `누르는 동안만 버티는 40초 타이밍 게임`.
+- "HOLD" 단독은 안 돼요. 영어 이름은 15자 이하이고 흔한 단어 하나만으로는 반려돼요 (LAUNCH.md "바뀐 사실").
+- **`.env.toss`의 `VITE_AIT_APP_NAME`을 콘솔에 등록한 appName으로 꼭 바꾸세요.** 지금은 `TODO`라서 그대로 빌드하면 공유 링크(`intoss://TODO`)와 `.ait` 파일 이름이 틀려요.
 
-앱 이름과 아이콘은 콘솔에서 관리해요 (SDK 3.x부터 설정 파일에는 없어요).
+### 콘솔에 올릴 이미지
+| 항목 | 규격 | 파일 |
+|---|---|---|
+| 로고 | 600×600 PNG, 각진 정사각형 (둥근 모서리 금지) | `assets/icon-only.png`를 600×600으로 줄여서 |
+| 썸네일 (가로형 대표 이미지) | 1932×828 PNG | `store/toss/thumbnail.png` |
+| 스크린샷 (세로형) | 636×1048 PNG, **최소 3장** | `store/toss/screenshot-1.png` ~ `3.png` |
+| OG 이미지 | 1200×600 PNG | `store/toss/og.png` |
+
+앱 이름과 아이콘은 콘솔에서 관리해요 (SDK 3.x부터 설정 파일에는 없어요). 모든 이미지는 `npm run store-shots`로 만들어요.
 
 ### 설정 (SDK 3.x)
 - `@apps-in-toss/web-framework` 3.x, 설정 파일은 `apps-in-toss.config.ts` (`granite.config.ts`는 2.x 방식이라 쓰지 않아요). `ait init`, `ait migrate`는 package.json 스크립트를 덮어쓰니 실행하지 마세요.
@@ -254,9 +261,26 @@ npm run font
 ```bash
 npm run assets   # assets/*.png 렌더링 + iOS/Android 모든 크기 생성
 ```
-스크린샷 다시 찍기:
-```bash
-npm run build && npx vite preview --port 4173 &
-node scripts/store-shots.mjs ios
-node scripts/store-shots.mjs android
-```
+스크린샷과 스토어 그래픽은 아래 [출시 이미지 체크리스트](#출시-이미지-체크리스트)를 보세요.
+
+## 출시 이미지 체크리스트
+
+모든 이미지는 Playwright(Chromium)로 그려요. 문구 디자인은 `scripts/lib/brand.mjs` 한 곳에 있어요 (DESIGN.md 원칙: 회백색 캔버스, 잉크 글자, 빨강은 보유 구간만, 그라데이션·그림자·이모지 없음).
+
+| 쓰는 곳 | 크기 | 파일 | 명령 | 커밋 |
+|---|---|---|---|---|
+| 링크 미리보기 (카톡, X, 스레드) | 1200×630 | `public/og.png` | `npm run og` | ✅ |
+| Google Play 스크린샷 6장 | 1080×1920 | `store/play/1-hold.png` ~ `6-challenge.png` | `npm run store-shots` | ❌ |
+| Google Play 그래픽 이미지 | 1024×500 | `store/play/feature-graphic.png` | `npm run store-shots` | ❌ |
+| Google Play 아이콘 | 512×512 | `store/android/icon-512.png` | `npm run assets` | ✅ |
+| App Store 6.9" 스크린샷 6장 | 1320×2868 | `store/appstore/1-hold.png` ~ `6-challenge.png` | `npm run store-shots` | ❌ |
+| 앱인토스 세로 스크린샷 3장 | 636×1048 | `store/toss/screenshot-1.png` ~ `3.png` | `npm run store-shots` | ❌ |
+| 앱인토스 썸네일 | 1932×828 | `store/toss/thumbnail.png` | `npm run store-shots` | ❌ |
+| 앱인토스 OG | 1200×600 | `store/toss/og.png` | `npm run store-shots` | ❌ |
+| 결과 이미지 카드 샘플 | 1080×1080, 1080×1920 | `store/card/*.png` | `npm run card-preview` | ❌ |
+
+- `npm run store-shots`는 `npm run build` 뒤 `node scripts/store-shots.mjs`예요. 대상만 고르려면 `node scripts/store-shots.mjs play toss appstore` 중 일부를, 캡처 없이 다시 합성만 하려면 `--compose-only`를 붙여요. `vite preview`는 스크립트가 직접 띄워요 (`URL=`로 이미 뜬 서버를 쓸 수도 있어요).
+- 찍는 방법: 가짜 시계(`page.clock`)로 2026-11-02~08 일주일의 오늘의 차트를 실제로 플레이해서 연속 기록·시즌 계좌·습관 유형을 진짜로 만든 뒤, 출시일 2026-11-09(#40, 주식, 공식 발표와 소문이 나오는 차트)에 홈 → 소문 뉴스 → 보유 중 → 결과 → 도전장 시트 → 습관 화면을 찍어요. `Math.random`도 고정이라 매번 같은 그림이 나와요. 장면별 캡션은 LAUNCH.md 스토리보드 그대로이고, 모든 장 하단에 `모든 회사·가격·뉴스는 가상이에요`가 들어가요.
+- 화면을 바꿨으면 다시 찍고 **6장을 눈으로 확인**하세요 (잘린 글자, 시트 겹침).
+- `store/play`, `store/toss`, `store/appstore`, `store/raw`, `store/card`는 `store/.gitignore`로 커밋하지 않아요. `store/android`, `store/ios`의 예전 캡션 없는 스크린샷은 더 이상 갱신하지 않아요.
+- `og:image`는 빌드 때 `.env`의 `VITE_SHARE_URL` + `og.png`로 채워져요. 주소를 바꾸면 끝에 `/`를 붙이고, 카톡 미리보기 캐시는 https://developers.kakao.com/tool/clear/og 에서 지워요.

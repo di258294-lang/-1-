@@ -7,33 +7,18 @@ import { h, icons, svg } from './dom'
 
 /**
  * Season pieces shared by home and the records screen: the closed-season
- * recap card and the "which recaps were dismissed" memory.
- *
- * The dismissed list lives in the save file (seenSeasons). Builds before
- * that kept it under its own localStorage key; it is still read, so a recap
- * dismissed there does not come back, and folded into the save on the next
- * dismissal.
+ * recap card and the "which recaps were dismissed" memory (save.seenSeasons).
  */
-export const SEEN_SEASONS_KEY = 'hold.seen.seasons'
 
 export const SEASON_RULE = '말일에 시장 대비 성적으로 결산해요.'
 export const MEDAL_RULE = `${MEDAL_MIN_DAYS}일 이상 하고 시장보다 앞서면 메달을 받아요.`
 
-function legacySeen(): string[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SEEN_SEASONS_KEY) ?? '[]')
-    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []
-  } catch {
-    return []
-  }
-}
-
 export function seenSeasons(): string[] {
-  return [...new Set([...save.seenSeasons(), ...legacySeen()])].sort()
+  return save.seenSeasons()
 }
 
 export function markSeasonsSeen(seasons: string[]) {
-  save.markSeasonsSeen([...legacySeen(), ...seasons])
+  save.markSeasonsSeen(seasons)
 }
 
 /** '2026-10' -> '10월 시즌'. */

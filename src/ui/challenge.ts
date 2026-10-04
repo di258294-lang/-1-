@@ -20,7 +20,6 @@ import type { Mode, Navigate } from './app'
 import { h, toast } from './dom'
 import { logError } from './errors'
 import { startDaily, withIntro } from './gate'
-import { pendingSave } from './pending-shim'
 import { challengeShareUrl, rememberNick, savedNick, shareOut } from './share'
 import { openSheet } from './sheet'
 import { isTutorial } from './tutorial'
@@ -34,7 +33,7 @@ import { isTutorial } from './tutorial'
  * out of every record; result.ts shows challengeCompare() as the headline.
  *
  * A same-day link to today's daily chart, opened before the player has done
- * it, is kept (pendingSave.setPendingChallenge) and offered on the result
+ * it, is kept (save.setPendingChallenge) and offered on the result
  * screen right after the daily (ux2 P0-2).
  */
 const challenges = new WeakMap<Market, Challenge>()
@@ -174,7 +173,7 @@ function allowed(go: Navigate, c: Challenge, code?: string) {
   const access = challengeAccess(c, today, playedToday(today))
   if (access === 'today') {
     // Kept, so the result screen of today's daily can offer it.
-    pendingSave.setPendingChallenge(code ?? safeEncode(c))
+    save.setPendingChallenge(code ?? safeEncode(c))
     todayFirstSheet(go, c)
     return false
   }
@@ -271,7 +270,7 @@ export function startChallenge(go: Navigate, c: Challenge) {
   }
   // The waiting challenge is the one being played now.
   const code = safeEncode(c)
-  if (code && pendingSave.pendingChallenge() === code) pendingSave.setPendingChallenge(null)
+  if (code && save.pendingChallenge() === code) save.setPendingChallenge(null)
   challenges.set(market, c)
   go({ name: 'play', mode: { kind: 'practice' }, market })
 }
@@ -282,11 +281,11 @@ export function startChallenge(go: Navigate, c: Challenge) {
  * or it can't be played yet.
  */
 export function pendingChallengeCard(go: Navigate): HTMLElement | null {
-  const code = pendingSave.pendingChallenge()
+  const code = save.pendingChallenge()
   if (!code) return null
   const decoded = decodeChallenge(code)
   if (!decoded.ok) {
-    pendingSave.setPendingChallenge(null)
+    save.setPendingChallenge(null)
     return null
   }
   const c = decoded.challenge

@@ -347,7 +347,7 @@ export function resultScreen(
         foot,
       )
     : null
-  // Challenge rounds never reach completeRound, so no mission there.
+  // Challenge rounds carry no mission (coachingFor gives mission: null).
   const judged = !versus && mission && (mission.outcome === 'pass' || mission.outcome === 'fail')
   const focus = versus ? null : judged ? missionCard(mission) : habitCard
   const folded = versus || judged ? habitCard : mission && mission.outcome === 'ineligible' ? missionCard(mission) : null

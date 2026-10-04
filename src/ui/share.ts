@@ -3,7 +3,7 @@ import { CHALLENGE_PARAM, cleanName, encodeChallenge, type Challenge } from '../
 import type { Market } from '../core/market'
 import { roundShareText } from '../core/share'
 import { logError } from './errors'
-import { pendingSave } from './pending-shim'
+import { save } from '../core/storage'
 
 /**
  * The game's public link. Not location.origin: that drops the GitHub Pages
@@ -15,7 +15,7 @@ export const shareUrl = () => platform.shareUrl()
 /** The saved nickname for challenge links ('' when none). */
 export function savedNick(): string {
   try {
-    return cleanName(pendingSave.getSettings().nick) ?? ''
+    return cleanName(save.getSettings().nick) ?? ''
   } catch {
     return ''
   }
@@ -23,7 +23,7 @@ export function savedNick(): string {
 
 export function rememberNick(name: string | null) {
   try {
-    pendingSave.updateSettings({ nick: name ?? '' })
+    save.updateSettings({ nick: name ?? '' })
   } catch {
     // Not remembered; the link still goes out.
   }

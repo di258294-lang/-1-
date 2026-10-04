@@ -1,5 +1,6 @@
 import { playPrice, type Market } from './market'
 import type { RoundResult } from './round'
+import { edgeText, marketVerdicts } from './card'
 import { formatPct } from './format'
 import { PRODUCTS } from './products'
 import { TYPES, type Profile } from './habits'
@@ -48,17 +49,9 @@ export function timelineSquares(market: Market, held: readonly boolean[]) {
  * without knowing what you held.
  */
 export function timingMarks(market: Market, held: readonly boolean[]): { marks: string; right: number; total: number } {
-  let right = 0
-  const all = slices(market)
-  const marks = all
-    .map(([from, to]) => {
-      const rose = playPrice(market, to) > playPrice(market, from)
-      const ok = heldMost(held, from, to) === rose
-      if (ok) right++
-      return ok ? '⭕' : '❌'
-    })
-    .join('')
-  return { marks, right, total: all.length }
+  // The same verdicts as the result image (core/card.ts), so text and card agree.
+  const verdicts = marketVerdicts(market, held)
+  return { marks: verdicts.map((ok) => (ok ? '⭕' : '❌')).join(''), right: verdicts.filter(Boolean).length, total: verdicts.length }
 }
 
 /** The invitation every round share ends with: the link carries the chart (?c=). */
@@ -67,9 +60,7 @@ export const CHALLENGE_ASK = '같은 차트로 나보다 잘할 수 있어요?'
 type ShareResult = Pick<RoundResult, 'yourReturn' | 'buyHoldReturn' | 'held'>
 
 /** "그냥 들고 있기보다 +4.2%": the one relative number, which gives nothing away. */
-export function edgeVsHold(result: Pick<RoundResult, 'yourReturn' | 'buyHoldReturn'>) {
-  return `그냥 들고 있기보다 ${formatPct(result.yourReturn - result.buyHoldReturn, 1)}`
-}
+export const edgeVsHold = (result: Pick<RoundResult, 'yourReturn' | 'buyHoldReturn'>) => edgeText(result.yourReturn, result.buyHoldReturn)
 
 /**
  * Today's chart, spoiler-free: no raw returns, no up/down squares.

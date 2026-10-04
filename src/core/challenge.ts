@@ -1,4 +1,7 @@
-import { dailySeed, EPOCH_KEY, nextKey } from './daily'
+import { dailySeed, keyForDay, nextKey } from './daily'
+
+/** Kept here for older imports; the date math lives in daily.ts. */
+export { keyForDay }
 import { ENGINE_VERSION, type RoundLength } from './market'
 import { formatPct } from './format'
 import { shownPct } from './copy'
@@ -91,13 +94,6 @@ export function cleanName(raw: unknown): string | null {
   if ([...name].length > NAME_MAX_CHARS) return null
   if (new TextEncoder().encode(name).length > NAME_MAX_BYTES) return null
   return name
-}
-
-/** The KST date key of daily chart #day. */
-export function keyForDay(day: number): string {
-  const d = new Date(`${EPOCH_KEY}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + day - 1)
-  return d.toISOString().slice(0, 10)
 }
 
 function fnv1a(bytes: Uint8Array, end: number) {
@@ -237,15 +233,6 @@ export function challengeAccess(c: Challenge, today: string, playedToday: boolea
     if (c.seed === dailySeed(key)) return 'future'
   }
   return 'ok'
-}
-
-/** `base` with ?c=code added, keeping any query or hash it already has. */
-export function challengeUrl(base: string, code: string): string {
-  const hashAt = base.indexOf('#')
-  const head = hashAt < 0 ? base : base.slice(0, hashAt)
-  const hash = hashAt < 0 ? '' : base.slice(hashAt)
-  const sep = head.includes('?') ? (head.endsWith('?') || head.endsWith('&') ? '' : '&') : '?'
-  return `${head}${sep}${CHALLENGE_PARAM}=${code}${hash}`
 }
 
 /**

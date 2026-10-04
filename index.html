@@ -8,6 +8,20 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="description" content="누르고 있는 동안만 주식을 들고 있어요. 매일 하나의 차트, 40초 타이밍 게임." />
+    <!-- Link previews (KakaoTalk, X, ...). Vite fills %VITE_SHARE_URL% from .env;
+         it must be the absolute https URL of the web build, ending in "/".
+         public/og.png comes from `npm run og`. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="HOLD" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:url" content="%VITE_SHARE_URL%" />
+    <meta property="og:title" content="HOLD · 누르는 동안만 들고 있는 40초 타이밍 게임" />
+    <meta property="og:description" content="매일 0시, 모두에게 같은 차트 하나. 손가락을 대면 사고 떼면 팔아요. 회사·가격·뉴스는 모두 가상이에요." />
+    <meta property="og:image" content="%VITE_SHARE_URL%og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="HOLD, 누르는 동안만 들고 있는 40초 타이밍 게임 (가상 게임)" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="preload" href="./src/assets/pretendard-subset.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />

@@ -17,7 +17,10 @@
     "build:toss": "tsc --noEmit && vite build --mode toss && ait build",
     "deploy:toss": "ait deploy",
     "assets": "node scripts/render-assets.mjs && capacitor-assets generate --ios --android --iconBackgroundColor \"#111418\" --iconBackgroundColorDark \"#111418\" --splashBackgroundColor \"#f2f3f5\" --splashBackgroundColorDark \"#0c0e11\"",
-    "cap:sync": "npm run build && cap sync"
+    "cap:sync": "npm run build && cap sync",
+    "og": "node scripts/render-og.mjs",
+    "store-shots": "npm run build && node scripts/store-shots.mjs",
+    "card-preview": "node scripts/card-preview.mjs"
   },
   "dependencies": {
     "@apps-in-toss/web-framework": "^3.7.0",

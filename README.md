@@ -53,6 +53,10 @@ npm run font         # 한글 문구를 바꾼 뒤: 쓰는 글자만 담은 글�
 npm run font:check   # CI: 문구에 쓴 한글이 글꼴에 다 있는지
 
 python3 scripts/build-single.py dist-single/hold.html   # 글꼴까지 담은 HTML 파일 하나
+
+npm run og           # 링크 미리보기 이미지 public/og.png (1200×630)
+npm run store-shots  # 빌드 후 스토어 스크린샷·그래픽을 store/에 (커밋 안 함)
+npm run card-preview # 결과 이미지 카드 샘플을 store/card/에
 ```
 
 ## 구조
@@ -84,6 +88,12 @@ src/platform/   web.ts(웹·Capacitor), toss.ts(앱인토스) — 빌드 모드�
 - [Capacitor](https://capacitorjs.com)로 같은 웹 빌드를 네이티브 앱으로 감싸요(`android/`, `ios/`). `npm run cap:sync` 후 `npx cap open android`.
 - 앱인토스: `npm run build:toss` → `.ait` 파일, `npm run deploy:toss`.
 - 푸시할 때마다 GitHub Actions가 테스트 후 웹 버전을 GitHub Pages에 올리고, 테스트용 안드로이드 APK를 만들어요.
+
+## 출시 이미지
+
+- **링크 미리보기**: `index.html`의 `og:*`, `twitter:card`가 `public/og.png`를 가리켜요. 주소는 `.env`의 `VITE_SHARE_URL`(끝에 `/`)에서 빌드할 때 채워져요.
+- **결과 이미지 카드**: `src/ui/card.ts`가 1080×1080, 1080×1920(스토리) PNG를 캔버스로 그려요. 스포일러 없는 ⭕/❌ 판정은 `src/core/card.ts`.
+- **스토어 이미지**: `scripts/store-shots.mjs`가 실제 빌드를 가짜 시계로 일주일 플레이해서 찍어요. 크기와 명령은 [docs/RELEASE.md](docs/RELEASE.md#출시-이미지-체크리스트).
 
 ## 문서
 
