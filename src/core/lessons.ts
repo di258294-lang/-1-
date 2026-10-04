@@ -5,6 +5,8 @@ export type Lesson = { title: string; line: string }
 
 const pct = (x: number, digits = 1) => `${x > 0 ? '+' : x < 0 ? '-' : ''}${Math.abs(x * 100).toFixed(digits)}%`
 const pp = (x: number, digits = 1) => `${x > 0 ? '+' : x < 0 ? '-' : ''}${Math.abs(x * 100).toFixed(digits)}%p`
+/** Signed number from an integer count of tenths of a percent (12, '%p' -> "+1.2%p"). */
+const tenths = (t: number, unit: '%' | '%p') => `${t > 0 ? '+' : t < 0 ? '-' : ''}${(Math.abs(t) / 10).toFixed(1)}${unit}`
 
 function range(market: Market) {
   let lo = Infinity
@@ -83,22 +85,23 @@ export function productLesson(market: Market): Lesson | null {
       const u = index[h + market.playTicks] / index[h] - 1
       const p = playPrice(market, market.playTicks) / playPrice(market, 0) - 1
       const naive = L * u
-      // Daily-rebalanced L-times product: 1 + P ~ (1 + U)^L * exp(-(L^2 - L)/2 * sum of daily r^2).
-      // The trend term is (1 + U)^L - (1 + L*U); the rest is volatility drag.
-      let sumSq = 0
-      for (let d = h; d < h + market.playTicks; d += market.ticksPerDay) {
-        const r = index[d + market.ticksPerDay] / index[d] - 1
-        sumSq += r * r
-      }
+      // Daily-rebalanced L-times fund: 1 + P ~ (1 + U)^L * exp(-(L^2 - L)/2 * sum of daily r^2).
+      // That formula is the explanation; the numbers shown are exact: the
+      // trend effect is (1 + U)^L - (1 + L*U) and the drag is whatever is
+      // left, (1 + P) - (1 + U)^L, so trend + drag = gap with no residual.
       const compounded = (1 + u) ** L
-      const trend = compounded - (1 + naive)
-      const drag = compounded * (Math.exp((-(L * L - L) / 2) * sumSq) - 1)
-      const gap = p - naive
-      const split = `단순 ${L}배라면 ${pct(naive)}인데, 차이 ${pp(gap)} 중 추세 효과가 ${pp(trend)}, 매일 ${L}배로 다시 맞추면서 생긴 변동성 끌림이 ${pp(drag)}예요.`
+      // Round to tenths of a percent first and derive the differences from
+      // the rounded values, so every displayed number adds up exactly.
+      const pT = Math.round(p * 1000)
+      const naiveT = Math.round(naive * 1000)
+      const gapT = pT - naiveT
+      const trendT = Math.round((compounded - (1 + naive)) * 1000)
+      const dragT = gapT - trendT
+      const split = `단순 ${L}배라면 ${tenths(naiveT, '%')}인데, 차이 ${tenths(gapT, '%p')} 중 추세 효과가 ${tenths(trendT, '%p')}, 매일 ${L}배로 다시 맞추면서 생긴 변동성 끌림이 ${tenths(dragT, '%p')}예요.`
       return {
-        title: gap < 0 ? '2배 상품은 출렁일수록 녹아요' : '한 방향으로 쭉 가면 2배보다 더 벌어요',
+        title: gapT < 0 ? '2배 상품은 출렁일수록 녹아요' : gapT > 0 ? '한 방향으로 쭉 가면 2배보다 더 벌어요' : '이번엔 거의 정확히 2배였어요',
         line:
-          `지수 ${pct(u)}, 2배 상품 ${pct(p)}. ${split}` +
+          `지수 ${pct(u)}, 2배 상품 ${tenths(pT, '%')}. ${split}` +
           (isShort ? ' 끌림은 기간이 길수록 커져요. 장기 모드에서 1년치를 확인해 보세요.' : ''),
       }
     }

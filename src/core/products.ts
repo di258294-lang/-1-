@@ -128,15 +128,16 @@ export const PRODUCTS: Record<ProductKey, Product> = {
       { name: '가상 우량 회사채', code: 'CORP-AA', sector: '회사채', duration: 4.2, convexity: 21 },
     ],
     filings: {
-      up: ['한국은행, 기준금리 0.25%p 인하', '물가 상승률 예상보다 크게 둔화', '중앙은행 총재 "금리 인하 검토"', '경기 침체 우려 확산'],
-      down: ['한국은행, 기준금리 0.25%p 인상', '물가 상승률 석 달째 올라', '국채 대량 발행 계획 발표', '중앙은행 총재 "긴축 더 필요"'],
+      up: ['중앙은행, 기준금리 0.25%p 인하', '물가 상승률 예상보다 크게 둔화', '중앙은행 총재 "금리 인하 검토"', '경기 침체 우려 확산'],
+      down: ['중앙은행, 기준금리 0.25%p 인상', '물가 상승률 석 달째 올라', '국채 대량 발행 계획 발표', '중앙은행 총재 "긴축 더 필요"'],
     },
     rumors: {
       up: ['이번 달 금리 내린다는 얘기 돌아', '큰손들이 국채 사들인다는 소문'],
       down: ['깜짝 금리 인상설 확산', '국채 발행 더 늘린다는 얘기 돌아'],
     },
-    // Price comes from the yield: dP/P = y*dt - D*dy + C/2*dy^2.
-    model: { sigma: 0, tailNu: 5, newsPerDay: 0.1, jump: 0.0015, bond: { yield0: 0.03, sigmaYield: 0.009, kappa: 0.5 } },
+    // Price comes from the yield: ln(1 + dP/P) = y*dt - D*dy + (C - D^2)/2*dy^2.
+    // yield0 is ln(1.03), the continuous rate of 3% cash (CASH_RATE_ANNUAL), so carry matches cash.
+    model: { sigma: 0, tailNu: 5, newsPerDay: 0.1, jump: 0.0015, bond: { yield0: Math.log(1.03), sigmaYield: 0.009, kappa: 0.5 } },
     rumorShare: 0.35,
     fee: 0.0005,
     priceRange: [95000, 110000],
@@ -175,7 +176,7 @@ export const PRODUCTS: Record<ProductKey, Product> = {
     assets: [
       { name: '도토리코인', code: 'DTRC', sector: '가상자산' },
       { name: '구름체인', code: 'CLDC', sector: '가상자산' },
-      { name: '펭귄토큰', code: 'PGNT', sector: '가상자산' },
+      { name: '두더지코인', code: 'DDJC', sector: '가상자산' },
       { name: '반딧불코인', code: 'BDBC', sector: '가상자산' },
       { name: '모래알토큰', code: 'SNDT', sector: '가상자산' },
     ],
@@ -187,7 +188,8 @@ export const PRODUCTS: Record<ProductKey, Product> = {
       up: ['유명 인플루언서가 {n} 샀다는 얘기', '{n} 곧 대형 호재 나온다는 소문', '고래 지갑이 {n} 모으는 중이라는 얘기'],
       down: ['{n} 개발자 잠적설', '{n} 상장폐지 가능성 제기', '큰손이 {n} 던진다는 소문'],
     },
-    model: { sigma: 0.75, tailNu: 3, newsPerDay: 0.15, jump: 0.07 },
+    // tailNu 4: with nu = 3 the fourth moment of the shocks is infinite.
+    model: { sigma: 0.75, tailNu: 4, newsPerDay: 0.15, jump: 0.07 },
     rumorShare: 0.75,
     fee: 0.0005,
     priceRange: [500, 5000],
