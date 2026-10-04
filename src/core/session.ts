@@ -36,7 +36,7 @@ export function completeRound(mode: Mode, market: Market, round: Round): RoundOu
       product: market.product,
     })
   } else {
-    save.recordPractice(result.yourReturn)
+    save.recordPractice(result.yourReturn, result.trades)
   }
 
   const habits = analyzeRound(market, result.held, result.fees)

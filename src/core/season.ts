@@ -18,6 +18,18 @@ export function seasonDaysLeft(dateKey: string) {
   return last - d
 }
 
+/** Last date key of a season: '2028-02' -> '2028-02-29'. */
+export function seasonLastDay(season: string) {
+  const [y, m] = season.split('-').map(Number)
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return `${season}-${String(last).padStart(2, '0')}`
+}
+
+/**
+ * Abandoned rounds count with their checkpointed return (see
+ * storage.progressDaily); frozen streak days add no entry, so they never
+ * move the account.
+ */
 type Entry = { yourReturn: number }
 
 function balance(daily: Record<string, Entry>, dateKey: string, inclusive: boolean) {
