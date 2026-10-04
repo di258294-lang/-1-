@@ -4,9 +4,14 @@ import type { ProductKey } from './products'
 /**
  * Trading habits from behavioral finance, measured from one round's
  * press/release log. Every score is 0..1, higher means the habit showed more.
+ *
+ * Every score is built as evidence against a P&L-blind random trader on the
+ * same chart: a habit only shows when the player's behavior is unlikely to
+ * come from pressing at random. That keeps a random presser from being told
+ * they have a habit, on every product and round length.
  */
 export type HabitKey = 'holder' | 'chicken' | 'scalper' | 'chaser' | 'rumor'
-export type TypeKey = HabitKey | 'machine'
+export type TypeKey = HabitKey | 'machine' | 'watcher'
 export type HabitScores = Record<HabitKey, number>
 
 export const HABIT_KEYS: readonly HabitKey[] = ['holder', 'chicken', 'scalper', 'chaser', 'rumor']
@@ -50,6 +55,11 @@ export const TYPES: Record<TypeKey, { name: string; line: string; tip: string }>
     line: '뚜렷한 나쁜 습관이 안 보여요. 손실은 빨리 끊고, 확인된 정보에만 움직여요. 흔치 않은 유형이에요.',
     tip: '이 감각 그대로 오늘의 차트에서 계좌를 키워보세요.',
   },
+  watcher: {
+    name: '관망형',
+    line: '대부분 지켜보고, 확신을 갖고 들어가는 일은 드물어요. 그래서 습관도 실력도 아직 잘 드러나지 않았어요.',
+    tip: '공시가 뜨면 들어가서, 가격이 움직일 때까지 들고 있어보세요.',
+  },
 }
 
 /** Rounds with at least one trade needed before a type is shown. */
@@ -61,7 +71,30 @@ const AFTER_EXIT_TICKS = 3 * TICKS_PER_SECOND
 const CHASE_LOOKBACK_TICKS = 2 * TICKS_PER_SECOND
 /** A chase is buying right after a move of this many standard deviations. */
 const CHASE_SIGMAS = 2
-const NEWS_REACTION_GRACE = 3
+/** Ticks (2 s) a player must have spent both up and down before comparing sell rates. */
+const MIN_STATE_TICKS = 20
+/** Sells in a round before its sell rates are compared at all. */
+const MIN_ROUND_SELLS = 3
+/**
+ * Sells while up needed before one round can claim a disposition effect.
+ * Sells while down are not required: never selling at a loss is its purest form.
+ */
+const MIN_ROUND_WIN_SELLS = 3
+/** Sell-rate ratio below which a difference is not worth naming. */
+const MIN_HAZARD_RATIO = 1.5
+/** One-sided 5% level: pooled evidence must clear this to name a habit. */
+const Z_FLAG = 1.64
+/** Clean exits needed before the profile judges selling winners early. */
+const MIN_POOLED_EXITS = 5
+/**
+ * Expected worst point of a driftless random walk over n steps, in units of
+ * sigma * sqrt(n): E[max of -W] = sqrt(2 / pi) ≈ 0.80 (reflection principle).
+ */
+const RW_DRAWDOWN = Math.sqrt(2 / Math.PI)
+/** Losers held at least this long (1 s) count toward depth; a tap is not riding a loss. */
+const MIN_DEPTH_TICKS = TICKS_PER_SECOND
+/** A profile habit at or above this names the type. */
+const TYPE_MIN = 0.3
 
 export type Trade = {
   entry: number
@@ -94,20 +127,50 @@ export function tradesFrom(market: Market, held: boolean[]): Trade[] {
 /** Raw sell/exposure tick counts behind the disposition measure, for pooling. */
 export type HabitCounts = { sellUp: number; expUp: number; sellDown: number; expDown: number }
 
+/**
+ * Sufficient statistics of one round, so the profile can pool evidence across
+ * rounds instead of averaging noisy per-round scores. Stored on the record.
+ */
+export type HabitEvidence = {
+  /**
+   * Winners sold with a news-free 3 s window after, and the sum of how far the
+   * move after each beat random winners of the same length on the chart (z).
+   */
+  exits: number
+  exitZ: number
+  /** Losing trades held 1 s or more, the sum of their worst points and of the random-walk expectation for them (as returns). */
+  losses: number
+  depth: number
+  depthBase: number
+  /** Rumors, reactions before the price moved, and how many chance alone would give on average. */
+  rumors: number
+  rumorHits: number
+  rumorChance: number
+  /** Buys right after a spike, and how many random presses would give on average. */
+  chases: number
+  chaseChance: number
+}
+
 export type RoundHabits = {
   trades: number
   scores: HabitScores
   /** Whether each habit could be measured at all this round (e.g. no losses = no holder score). */
   measurable: Record<HabitKey, boolean>
   counts: HabitCounts
+  evidence: HabitEvidence
   facts: {
     lossTrades: number
     winTrades: number
     avgLossWorst: number
     avgLossHoldSec: number
     avgWinHoldSec: number
-    /** Average move in the 3 seconds after selling a winner. */
+    /** Average move in the 3 seconds after selling a winner (news-free windows only). */
     missedAfterWin: number
+    /** Winners whose 3 s after the sale had no news gap, the ones missedAfterWin averages. */
+    cleanWinExits: number
+    /** Losing trades held 1 s or more: their average worst point, and that depth over what a random hold of the same length would see (1 = normal). */
+    heldLossWorst: number
+    lossDepthRatio: number
     chaseEntries: number
     rumors: number
     rumorReactions: number
@@ -118,31 +181,69 @@ export type RoundHabits = {
     /** Chance of selling within one second while up / while down. */
     sellRateUp: number
     sellRateDown: number
-    /** True when the round had enough time both up and down to compare them. */
+    /** Sells made while up / while down. */
+    sellsUp: number
+    sellsDown: number
+    /** Evidence (z) that you sold faster while up than while down. */
+    dispositionZ: number
+    /** True when the round had enough time both up and down, and enough sells, to compare them. */
     comparableRates: boolean
+    /** Which evidence the holder score came from: sell rates, loss depth, or neither. */
+    holderBasis: 'rates' | 'depth' | 'none'
   }
 }
 
 const ramp = (x: number, lo: number, hi: number) => Math.max(0, Math.min(1, (x - lo) / (hi - lo)))
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
 
 /**
- * Robust per-tick volatility of this chart: the median absolute deviation of
- * tick log returns, scaled to a standard deviation. Immune to news jumps.
+ * Per-tick volatility of this chart: the standard deviation of tick log
+ * returns, leaving out the ticks around each news gap. Median-based
+ * estimators understate it with fat tails and volatility clustering, which
+ * would quietly turn "2 sigma" into 1.3 sigma, differently per product.
  */
 export function tickVolatility(market: Market) {
+  const skip = new Set<number>()
+  for (const n of market.news) for (let d = -1; d <= 1; d++) skip.add(n.impactAt + d)
   const r: number[] = []
-  for (let t = 1; t <= market.playTicks; t++) r.push(Math.log(playPrice(market, t) / playPrice(market, t - 1)))
-  const sorted = [...r].sort((a, b) => a - b)
-  const med = sorted[Math.floor(sorted.length / 2)]
-  const dev = r.map((x) => Math.abs(x - med)).sort((a, b) => a - b)
-  return Math.max(1e-6, 1.4826 * dev[Math.floor(dev.length / 2)])
+  for (let t = 1; t <= market.playTicks; t++) {
+    if (!skip.has(t)) r.push(Math.log(playPrice(market, t) / playPrice(market, t - 1)))
+  }
+  if (r.length < 2) return 1e-6
+  const mu = mean(r)
+  const variance = r.reduce((a, x) => a + (x - mu) * (x - mu), 0) / (r.length - 1)
+  return Math.max(1e-6, Math.sqrt(variance))
 }
 
-/** Pseudo-ticks of prior exposure when shrinking sell rates (empirical Bayes). */
-const HAZARD_PRIOR_TICKS = 30
-/** Ticks (2 s) a player must have spent both up and down before comparing sell rates. */
-const MIN_STATE_TICKS = 20
+/**
+ * Disposition effect as a rate comparison (Shefrin & Statman 1985; Odean
+ * 1998): sells per tick spent up versus per tick spent down, as a log hazard
+ * ratio with a half-sell continuity correction and its Poisson standard
+ * error. Works on one round or on counts pooled across rounds.
+ */
+export function dispositionTest(c: HabitCounts) {
+  const ok = c.expUp >= MIN_STATE_TICKS && c.expDown >= MIN_STATE_TICKS
+  if (!ok) return { ok, ratio: 1, z: 0, rateUp: 0, rateDown: 0 }
+  const rateUp = (c.sellUp + 0.5) / c.expUp
+  const rateDown = (c.sellDown + 0.5) / c.expDown
+  const z = Math.log(rateUp / rateDown) / Math.sqrt(1 / (c.sellUp + 0.5) + 1 / (c.sellDown + 0.5))
+  return { ok, ratio: rateUp / rateDown, z, rateUp, rateDown }
+}
+
+/** Chance of at least `hits` successes among independent trials with these probabilities. */
+function atLeast(hits: number, ps: number[]) {
+  let dist = [1]
+  for (const p of ps) {
+    const next = new Array<number>(dist.length + 1).fill(0)
+    dist.forEach((q, k) => {
+      next[k] += q * (1 - p)
+      next[k + 1] += q * p
+    })
+    dist = next
+  }
+  return sum(dist.slice(hits))
+}
 
 export function analyzeRound(market: Market, held: boolean[], fees: number): RoundHabits {
   const playTicks = market.playTicks
@@ -153,22 +254,23 @@ export function analyzeRound(market: Market, held: boolean[], fees: number): Rou
   // Every price threshold below is in units of this chart's own volatility,
   // so a 2% dip means the same thing on a calm bond as on a wild coin.
   const vol = tickVolatility(market)
-  const dayVol = vol * Math.sqrt(market.ticksPerDay)
+  const impacts = market.news.map((n) => n.impactAt)
+  const gapsIn = (from: number, to: number) => impacts.filter((t) => t >= from && t <= to)
 
   const avgLossWorst = mean(losses.map((t) => t.worst))
   const avgLossHoldSec = mean(losses.map(sec))
   const avgWinHoldSec = mean(wins.map(sec))
 
-  // Disposition effect (Shefrin & Statman 1985; Odean 1998): how likely you
-  // are to sell on any given tick while the trade is up versus while it is
-  // down. Rates are shrunk toward your overall sell rate so a round with two
-  // trades cannot produce an extreme ratio.
+  // Disposition: sell rates while up versus while down, tick by tick.
   let expGain = 0
   let expLoss = 0
   let sellGain = 0
   let sellLoss = 0
   let entryPrice = 0
+  let entries = 0
+  let heldTicks = 0
   for (let t = 0; t < playTicks; t++) {
+    if (held[t]) heldTicks++
     if (t > 0 && held[t - 1]) {
       const up = playPrice(market, t) > entryPrice
       if (up) expGain++
@@ -178,44 +280,93 @@ export function analyzeRound(market: Market, held: boolean[], fees: number): Rou
         else sellLoss++
       }
     }
-    if (held[t] && (t === 0 || !held[t - 1])) entryPrice = playPrice(market, t)
+    if (held[t] && (t === 0 || !held[t - 1])) {
+      entryPrice = playPrice(market, t)
+      entries++
+    }
   }
-  const hAll = (sellGain + sellLoss + 1) / (expGain + expLoss + HAZARD_PRIOR_TICKS)
-  const hGain = (sellGain + HAZARD_PRIOR_TICKS * hAll) / (expGain + HAZARD_PRIOR_TICKS)
-  const hLoss = (sellLoss + HAZARD_PRIOR_TICKS * hAll) / (expLoss + HAZARD_PRIOR_TICKS)
-  // Compare sell rates only after real time spent both up and down.
-  const enough = trades.length >= 2 && expGain >= MIN_STATE_TICKS && expLoss >= MIN_STATE_TICKS
+  const counts: HabitCounts = { sellUp: sellGain, expUp: expGain, sellDown: sellLoss, expDown: expLoss }
+  const disp = dispositionTest(counts)
+  const comparable = disp.ok && sellGain + sellLoss >= MIN_ROUND_SELLS
+  const dispScore =
+    comparable && sellGain >= MIN_ROUND_WIN_SELLS && disp.ratio >= MIN_HAZARD_RATIO ? ramp(disp.z, 1.28, 2.33) : 0
 
-  // Holding losers: depth in daily volatilities, plus a low sell rate while down.
-  let holder = 0
-  if (losses.length) {
-    const depth = ramp(-avgLossWorst / dayVol, 1.5, 4)
-    holder = enough ? 0.5 * depth + 0.5 * ramp(Math.log(hAll / hLoss), 0.15, 1) : depth
-  }
-
-  // Selling winners early: the move right after you sold, in volatility
-  // units, plus a high sell rate while up.
-  const earlyExits = wins.filter((t) => t.exit + AFTER_EXIT_TICKS <= playTicks)
-  const missedAfterWin = mean(
-    earlyExits.map((t) => playPrice(market, t.exit + AFTER_EXIT_TICKS) / playPrice(market, t.exit) - 1),
+  // Depth: how far losers you really held (1 s or more) fell, compared with
+  // a random hold of the same length (wall-clock ticks, not days), excusing
+  // any news gap inside it.
+  const heldLosses = losses.filter((t) => t.exit - t.entry >= MIN_DEPTH_TICKS)
+  const depth = sum(heldLosses.map((t) => -t.worst))
+  const depthBase = sum(
+    heldLosses.map((t) => {
+      const gaps = gapsIn(t.entry + 1, t.exit).map((i) => Math.abs(Math.log(playPrice(market, i) / playPrice(market, i - 1))))
+      return RW_DRAWDOWN * vol * Math.sqrt(t.exit - t.entry) + sum(gaps)
+    }),
   )
-  let chicken = 0
-  if (earlyExits.length) {
-    const missed = ramp(missedAfterWin / (vol * Math.sqrt(AFTER_EXIT_TICKS)), 0.6, 1.8)
-    chicken = enough ? 0.5 * missed + 0.5 * ramp(Math.log(hGain / hAll), 0.15, 1) : missed
+  const lossDepthRatio = depthBase > 0 ? depth / depthBase : 0
+  // One loser is enough only when it went far beyond anything chance gives.
+  const depthScore = heldLosses.length
+    ? ramp(lossDepthRatio, 2.5, 4) * (heldLosses.length >= 2 ? 1 : 0.5 + 0.5 * ramp(lossDepthRatio, 4, 8))
+    : 0
+  const holder = Math.max(dispScore, depthScore)
+
+  // Selling winners early: did the price keep rising after you sold, more
+  // than it does after a random winning trade of the same length on this
+  // chart? Trends make every winner's next move lean up a little, so the raw
+  // move alone would accuse anyone who ever sold a winner. News gaps are
+  // left out, and the habit counts only when the price really kept rising.
+  const W = AFTER_EXIT_TICKS
+  const cleanAfter = new Array<boolean>(playTicks + 1).fill(false)
+  for (let e = 0; e + W <= playTicks; e++) cleanAfter[e] = gapsIn(e, e + W + 1).length === 0
+  const moveAfter = (e: number) => Math.log(playPrice(market, e + W) / playPrice(market, e))
+  const baselines = new Map<number, { mu: number; sd: number } | null>()
+  const baseline = (len: number) => {
+    if (!baselines.has(len)) {
+      const xs: number[] = []
+      for (let e = len; e + W <= playTicks; e++) {
+        if (cleanAfter[e] && playPrice(market, e) > playPrice(market, e - len)) xs.push(moveAfter(e))
+      }
+      const mu = mean(xs)
+      const sd = xs.length > 1 ? Math.sqrt(xs.reduce((a, x) => a + (x - mu) * (x - mu), 0) / (xs.length - 1)) : 0
+      baselines.set(len, xs.length >= 5 ? { mu, sd: Math.max(sd, 0.1 * vol * Math.sqrt(W)) } : null)
+    }
+    return baselines.get(len) ?? null
   }
+  const exitScores: number[] = []
+  const exitMoves: number[] = []
+  for (const t of wins) {
+    if (!cleanAfter[t.exit]) continue
+    const b = baseline(Math.max(1, t.exit - t.entry))
+    if (!b) continue
+    const m = moveAfter(t.exit)
+    exitMoves.push(m)
+    exitScores.push((m - b.mu) / b.sd)
+  }
+  const exits = exitMoves.length
+  const exitZ = sum(exitScores)
+  const missedAfterWin = mean(exitMoves.map((x) => Math.exp(x) - 1))
+  const chicken =
+    exits >= 2 && missedAfterWin > 0 && exitZ > 0
+      ? ramp(exitZ / Math.sqrt(exits), 1.28, 2.33) * Math.min(1, exits / 3)
+      : 0
 
   // Normalized to trades per 40 seconds so short and long rounds compare.
   const scalper = ramp(trades.length * (400 / playTicks), 6, 14)
 
-  const chaseEntries = trades.filter((t) => {
-    const from = Math.max(0, t.entry - CHASE_LOOKBACK_TICKS)
-    const rise = Math.log(playPrice(market, t.entry) / playPrice(market, from))
-    return t.entry - from >= 5 && rise > CHASE_SIGMAS * vol * Math.sqrt(t.entry - from)
-  }).length
-  const chaser = trades.length ? ramp(chaseEntries / trades.length, 0.25, 0.75) * Math.min(1, trades.length / 2) : 0
+  const chased = (t: number) => {
+    const from = Math.max(0, t - CHASE_LOOKBACK_TICKS)
+    return t - from >= 5 && Math.log(playPrice(market, t) / playPrice(market, from)) > CHASE_SIGMAS * vol * Math.sqrt(t - from)
+  }
+  const chaseEntries = trades.filter((t) => chased(t.entry)).length
+  // How often a press at a random moment on this chart lands right after a spike.
+  let spikeTicks = 0
+  for (let t = 5; t < playTicks; t++) if (chased(t)) spikeTicks++
+  const chaseBase = spikeTicks / Math.max(1, playTicks - 5)
+  const chaseExcess = trades.length ? (chaseEntries - trades.length * chaseBase) / trades.length : 0
+  // One lucky buy is not a habit: a single round needs two.
+  const chaser = ramp(chaseExcess, 0.25, 0.75) * (chaseEntries >= 2 ? 1 : 0.4)
 
-  // Did you act in the headline's direction before the price confirmed it?
+  // Did you act in the headline's direction before the price moved? A press
+  // on or after the gap is a reaction to the price, not to the headline.
   const reacted = (from: number, to: number, implied: 1 | -1) => {
     for (let t = Math.max(1, from); t < to && t < playTicks; t++) {
       if (implied > 0 && held[t] && !held[t - 1]) return true
@@ -223,15 +374,28 @@ export function analyzeRound(market: Market, held: boolean[], fees: number): Rou
     }
     return false
   }
+  // How often you would have done that anyway, pressing at your own pace.
+  const rateIn = entries / Math.max(1, playTicks - heldTicks)
+  const rateOut = (sellGain + sellLoss) / Math.max(1, heldTicks)
+  const chanceOf = (from: number, to: number, implied: 1 | -1) => {
+    const len = Math.max(0, Math.min(to, playTicks) - Math.max(1, from))
+    const pIn = 1 - Math.exp(-rateIn * len)
+    const pOut = 1 - Math.exp(-rateOut * len)
+    const holding = held[Math.max(0, from - 1)]
+    if (implied > 0) return holding ? pOut * (1 - Math.exp(-rateIn * len * 0.5)) : pIn
+    return holding ? pOut : pIn * (1 - Math.exp(-rateOut * len * 0.5))
+  }
   let rumors = 0
   let rumorReactions = 0
   let wrongRumorReactions = 0
   let filings = 0
   let filingReactions = 0
+  const rumorChances: number[] = []
   for (const n of market.news) {
-    const hit = reacted(n.at, n.impactAt + NEWS_REACTION_GRACE, n.implied)
+    const hit = reacted(n.at, n.impactAt, n.implied)
     if (n.kind === 'rumor') {
       rumors++
+      rumorChances.push(chanceOf(n.at, n.impactAt, n.implied))
       if (hit) {
         rumorReactions++
         if (n.actual !== n.implied) wrongRumorReactions++
@@ -241,19 +405,35 @@ export function analyzeRound(market: Market, held: boolean[], fees: number): Rou
       if (hit) filingReactions++
     }
   }
-  const rumor = rumors ? ramp(rumorReactions / rumors, 0.3, 1) * 0.85 + (wrongRumorReactions ? 0.15 : 0) : 0
+  // Scored by how unlikely that many reactions would be by chance.
+  const pChance = atLeast(rumorReactions, rumorChances)
+  const rumor = rumorReactions ? ramp(-Math.log10(Math.max(pChance, 1e-9)), 0.7, 2) * (rumorReactions >= 2 ? 1 : 0.4) : 0
+
+  const perSecond = (h: number) => 1 - (1 - Math.min(1, h)) ** TICKS_PER_SECOND
 
   return {
     trades: trades.length,
     scores: { holder, chicken, scalper, chaser, rumor },
     measurable: {
-      holder: losses.length > 0,
-      chicken: earlyExits.length > 0,
+      holder: losses.length > 0 || comparable,
+      chicken: exits > 0,
       scalper: trades.length > 0,
       chaser: trades.length > 0,
       rumor: rumors > 0,
     },
-    counts: { sellUp: sellGain, expUp: expGain, sellDown: sellLoss, expDown: expLoss },
+    counts,
+    evidence: {
+      exits,
+      exitZ,
+      losses: heldLosses.length,
+      depth,
+      depthBase,
+      rumors,
+      rumorHits: rumorReactions,
+      rumorChance: sum(rumorChances),
+      chases: chaseEntries,
+      chaseChance: trades.length * chaseBase,
+    },
     facts: {
       lossTrades: losses.length,
       winTrades: wins.length,
@@ -261,6 +441,9 @@ export function analyzeRound(market: Market, held: boolean[], fees: number): Rou
       avgLossHoldSec,
       avgWinHoldSec,
       missedAfterWin,
+      cleanWinExits: exits,
+      heldLossWorst: -depth / Math.max(1, heldLosses.length),
+      lossDepthRatio,
       chaseEntries,
       rumors,
       rumorReactions,
@@ -268,18 +451,26 @@ export function analyzeRound(market: Market, held: boolean[], fees: number): Rou
       filings,
       filingReactions,
       fees,
-      sellRateUp: 1 - (1 - hGain) ** TICKS_PER_SECOND,
-      sellRateDown: 1 - (1 - hLoss) ** TICKS_PER_SECOND,
-      comparableRates: enough,
+      sellRateUp: perSecond(disp.rateUp),
+      sellRateDown: perSecond(disp.rateDown),
+      sellsUp: sellGain,
+      sellsDown: sellLoss,
+      dispositionZ: disp.z,
+      comparableRates: comparable,
+      holderBasis: holder <= 0 ? 'none' : dispScore >= Math.min(0.5, depthScore) ? 'rates' : 'depth',
     },
   }
 }
 
 export type Insight = { tone: 'warn' | 'good' | 'none'; habit?: HabitKey; title: string; line: string }
 
-const pct = (x: number) => `${(Math.abs(x) * 100).toFixed(1)}%`
-const secs = (x: number) => `${x.toFixed(1)}초`
+/** "1.2%", with more digits for moves too small to show at one decimal. */
+const pct = (x: number) => {
+  const a = Math.abs(x) * 100
+  return `${a >= 0.1 ? a.toFixed(1) : a.toFixed(2)}%`
+}
 const man = (won: number) => `${Math.round(won / 10_000).toLocaleString('ko-KR')}만 원`
+const times = (x: number) => `${x.toFixed(1)}배`
 
 /** The one thing worth telling the player about this round. */
 export function roundInsight(h: RoundHabits): Insight {
@@ -292,28 +483,20 @@ export function roundInsight(h: RoundHabits): Insight {
     switch (top) {
       case 'holder': {
         // Quote whichever evidence actually drove the score.
-        const ratio = f.sellRateUp / Math.max(f.sellRateDown, 1e-6)
-        if (f.comparableRates && ratio >= 1.5) {
+        const ratio = f.sellRateUp / Math.max(f.sellRateDown, 1e-9)
+        if (f.holderBasis === 'rates' && ratio >= MIN_HAZARD_RATIO) {
           return {
             tone: 'warn',
             habit: top,
             title: '수익은 빨리 팔고, 손실은 버텼어요',
-            line: `수익 중일 때 1초 안에 팔 확률이 손실 중일 때의 ${ratio.toFixed(1)}배였어요. 처분 효과라고 부르는, 개인 투자자가 돈을 잃는 대표적인 습관이에요.`,
-          }
-        }
-        if (f.winTrades && f.avgLossHoldSec > f.avgWinHoldSec * 1.5) {
-          return {
-            tone: 'warn',
-            habit: top,
-            title: '손실은 오래, 수익은 짧게 들고 있었어요',
-            line: `손실 난 매매는 평균 ${secs(f.avgLossHoldSec)}, 수익 난 매매는 ${secs(f.avgWinHoldSec)} 들고 있었어요. 돈 버는 사람들은 반대로 해요.`,
+            line: `수익 중에 ${f.sellsUp}번, 손실 중에 ${f.sellsDown}번 팔았어요. 들고 있던 시간을 감안하면, 수익 중일 때 1초 안에 팔 확률이 손실 중일 때의 ${times(ratio)}였어요. 처분 효과라고 불러요.`,
           }
         }
         return {
           tone: 'warn',
           habit: top,
           title: '손실을 끝까지 버텼어요',
-          line: `손실 난 매매에서 평균 -${pct(f.avgLossWorst)}까지 내려가도 들고 있었어요. 이 종목의 하루 평균 흔들림보다 훨씬 큰 폭이에요.`,
+          line: `1초 넘게 들고 있던 손실 매매에서 평균 -${pct(f.heldLossWorst)}까지 내려가도 들고 있었어요. 같은 시간 동안 보통 흔들리는 폭의 ${times(f.lossDepthRatio)}예요.`,
         }
       }
       case 'chicken':
@@ -321,7 +504,7 @@ export function roundInsight(h: RoundHabits): Insight {
           tone: 'warn',
           habit: top,
           title: '수익을 너무 빨리 확정했어요',
-          line: `판 뒤 3초 동안 가격이 평균 ${pct(f.missedAfterWin)} 더 올랐어요.`,
+          line: `수익 내고 판 ${f.cleanWinExits}번, 그 뒤 3초 동안 가격이 평균 ${pct(f.missedAfterWin)} 더 올랐어요.`,
         }
       case 'scalper':
         return {
@@ -355,7 +538,8 @@ export function roundInsight(h: RoundHabits): Insight {
       line: `공시 ${f.filings}개 중 ${f.filingReactions}개에 가격보다 먼저 맞게 움직였어요.`,
     }
   }
-  if (f.lossTrades && f.avgLossWorst > -0.02) {
+  // Shallower than a random hold of the same length would usually go.
+  if (f.lossTrades >= 2 && f.lossDepthRatio > 0 && f.lossDepthRatio < 1) {
     return {
       tone: 'good',
       title: '손절이 빨랐어요',
@@ -383,20 +567,128 @@ export type HabitRecord = {
   counts: HabitCounts
   /** Luck-test percentile (0..1), filled in after the result screen computes it. */
   luckPct: number | null
+  /** RoundHabits.evidence, so the profile can pool rounds. Missing on older records. */
+  evidence?: HabitEvidence
 }
 
 export type Profile = { type: TypeKey; scores: HabitScores; rounds: number }
 
-/** Average the recent rounds that had trades and pick the strongest habit. */
+/**
+ * Maps pooled evidence (a z statistic) to a 0..1 score that reaches TYPE_MIN
+ * exactly at the one-sided 5% level, so only a significant habit names a type.
+ */
+const pooledScore = (z: number) => (z >= Z_FLAG ? TYPE_MIN + (1 - TYPE_MIN) * ramp(z, Z_FLAG, 3.5) : 0.97 * TYPE_MIN * ramp(z, 0, Z_FLAG))
+
+/** The same mapping from a one-sided p-value, for rare-event counts where z is too lopsided. */
+const pooledScoreP = (p: number) => {
+  const s = -Math.log10(Math.max(p, 1e-12))
+  const flag = -Math.log10(0.05)
+  return s >= flag ? TYPE_MIN + (1 - TYPE_MIN) * ramp(s, flag, 3.5) : 0.97 * TYPE_MIN * ramp(s, 0, flag)
+}
+
+/**
+ * Chance of at least k events from a Poisson count with this mean. For a sum
+ * of independent rare events with the same mean it errs on the safe side.
+ */
+function poissonTail(k: number, lambda: number) {
+  if (k <= 0) return 1
+  let term = Math.exp(-lambda)
+  let cdf = term
+  for (let i = 1; i < k; i++) {
+    term *= lambda / i
+    cdf += term
+  }
+  return Math.max(0, 1 - cdf)
+}
+
+/** Participation needed before "no habit" can mean discipline rather than barely playing. */
+const MACHINE_MIN_HELD = 0.2
+const MACHINE_MIN_TRADES = 2
+const MACHINE_MIN_LUCK = 0.55
+const MACHINE_LUCK_ROUNDS = 3
+
+/**
+ * Pool the recent rounds and pick the strongest habit. Each habit counts only
+ * the rounds where it could be measured, weighted by how much evidence each
+ * round had, and the habits that compare rates pool their raw counts.
+ */
 export function profileFrom(records: HabitRecord[]): Profile | null {
-  const recent = records.slice(-PROFILE_WINDOW).map((r) => r.scores)
+  const recent = records.slice(-PROFILE_WINDOW)
   if (recent.length < PROFILE_MIN_ROUNDS) return null
-  const scores = Object.fromEntries(
-    HABIT_KEYS.map((k) => [k, mean(recent.map((s) => s[k]))]),
-  ) as HabitScores
+
+  const weighted = (k: HabitKey, weight: (r: HabitRecord) => number) => {
+    const rs = recent.filter((r) => r.measurable[k])
+    const w = sum(rs.map(weight))
+    return w > 0 ? sum(rs.map((r) => weight(r) * r.scores[k])) / w : 0
+  }
+  const ev = recent.every((r) => r.evidence) ? recent.map((r) => r.evidence as HabitEvidence) : null
+  const total = (pick: (e: HabitEvidence) => number) => (ev ? sum(ev.map(pick)) : 0)
+
+  // Holder: the pooled disposition test, or losers that fell far deeper
+  // than random holds of the same length.
+  const pooled = recent.reduce<HabitCounts>(
+    (a, r) => ({
+      sellUp: a.sellUp + r.counts.sellUp,
+      expUp: a.expUp + r.counts.expUp,
+      sellDown: a.sellDown + r.counts.sellDown,
+      expDown: a.expDown + r.counts.expDown,
+    }),
+    { sellUp: 0, expUp: 0, sellDown: 0, expDown: 0 },
+  )
+  const disp = dispositionTest(pooled)
+  const dispScore = disp.ok && disp.ratio >= MIN_HAZARD_RATIO ? pooledScore(disp.z) : 0
+  const depthScore = ev
+    ? total((e) => e.depthBase) > 0
+      ? ramp(total((e) => e.depth) / total((e) => e.depthBase), 2.2, 3.5) * Math.min(1, total((e) => e.losses) / 5)
+      : 0
+    : weighted('holder', (r) => r.trades)
+  const holder = Math.max(dispScore, depthScore)
+
+  // Chicken: the move after selling winners, pooled over enough clean exits.
+  let chicken: number
+  if (ev) {
+    const exits = total((e) => e.exits)
+    chicken = exits >= MIN_POOLED_EXITS ? pooledScore(total((e) => e.exitZ) / Math.sqrt(exits)) : 0
+  } else {
+    chicken = weighted('chicken', (r) => r.trades)
+  }
+
+  const scalper = weighted('scalper', () => 1)
+  // Chaser: buys after spikes, pooled, against how often a random press would.
+  let chaser: number
+  if (ev) {
+    const chases = total((e) => e.chases)
+    const entries = sum(recent.map((r) => r.trades))
+    chaser =
+      chases >= 3
+        ? pooledScoreP(poissonTail(chases, total((e) => e.chaseChance))) * ramp(chases / Math.max(1, entries), 0.1, 0.25)
+        : 0
+  } else {
+    chaser = weighted('chaser', (r) => r.trades)
+  }
+
+  let rumor: number
+  if (ev) {
+    const hits = total((e) => e.rumorHits)
+    rumor = hits >= 2 ? pooledScoreP(poissonTail(hits, total((e) => e.rumorChance))) : 0
+  } else {
+    rumor = weighted('rumor', () => 1)
+  }
+
+  const scores: HabitScores = { holder, chicken, scalper, chaser, rumor }
   const top = HABIT_KEYS.reduce((a, b) => (scores[b] > scores[a] ? b : a))
-  // The good type needs every habit low, not just no single standout.
-  const overall = mean(HABIT_KEYS.map((k) => scores[k]))
-  const machine = scores[top] < 0.3 && overall < 0.12
-  return { type: machine ? 'machine' : top, scores, rounds: recent.length }
+  let type: TypeKey = top
+  if (scores[top] < TYPE_MIN) {
+    // No habit stands out. That reads as discipline only if you really played
+    // and beat random pressing; otherwise it is too early to tell.
+    const lucky = recent.map((r) => r.luckPct).filter((p): p is number => p !== null)
+    // Records migrated from v1 carry no participation (heldRatio 0); skip them.
+    const known = recent.filter((r) => r.heldRatio > 0)
+    const active =
+      !known.length ||
+      (mean(known.map((r) => r.heldRatio)) >= MACHINE_MIN_HELD && mean(known.map((r) => r.trades)) >= MACHINE_MIN_TRADES)
+    const skilled = lucky.length < MACHINE_LUCK_ROUNDS || mean(lucky) >= MACHINE_MIN_LUCK
+    type = active && skilled ? 'machine' : 'watcher'
+  }
+  return { type, scores, rounds: recent.length }
 }
