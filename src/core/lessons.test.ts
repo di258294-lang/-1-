@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { analyzeRound, roundInsight, type Insight } from './habits'
-import { luckLesson, pickLesson, roundLessons, type LessonContext } from './lessons'
+import { luckLesson, pickLesson, productLesson, roundLessons, type LessonContext } from './lessons'
 import type { LuckResult } from './luck'
 import { generateMarket, type Market } from './market'
 import type { ProductKey } from './products'
@@ -114,5 +114,19 @@ describe('micro-lessons', () => {
     expect(luckLesson(luck(0.05, 900), 5, [])?.id).toBe('L7')
     expect(luckLesson(luck(0.05, 900), 2, [])).toBeNull()
     expect(luckLesson(luck(0.5, 500), 9, [])).toBeNull()
+    expect(luckLesson(luck(0.98, 20), 5, ['L8'])?.line).not.toMatch(/실력/)
+  })
+})
+
+describe('2x lesson rounding', () => {
+  it('shows "단순 2배" as exactly twice the index as displayed', () => {
+    for (const length of ['short', 'long'] as const) {
+      for (let s = 0; s < (length === 'short' ? 200 : 40); s++) {
+        const line = productLesson(generateMarket(s, 'lev2', length))!.line
+        const m = line.match(/지수 ([+-]?[\d.]+)%, .* 단순 2배라면 ([+-]?[\d.]+)%/)
+        expect(m, line).not.toBeNull()
+        expect(Math.round(Number(m![2]) * 10), line).toBe(2 * Math.round(Number(m![1]) * 10))
+      }
+    }
   })
 })

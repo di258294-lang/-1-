@@ -11,7 +11,12 @@ import type { ProductKey } from './products'
  * they have a habit, on every product and round length.
  */
 export type HabitKey = 'holder' | 'chicken' | 'scalper' | 'chaser' | 'rumor'
-export type TypeKey = HabitKey | 'machine' | 'watcher'
+/**
+ * A habit type, or one of three "no habit" types: 'machine' (in the market,
+ * no habit, timing better than random), 'steady' (in the market, no habit,
+ * no timing edge yet: "탐색 중") and 'watcher' (barely in the market).
+ */
+export type TypeKey = HabitKey | 'machine' | 'steady' | 'watcher'
 export type HabitScores = Record<HabitKey, number>
 
 export const HABIT_KEYS: readonly HabitKey[] = ['holder', 'chicken', 'scalper', 'chaser', 'rumor']
@@ -52,15 +57,23 @@ export const TYPES: Record<TypeKey, { name: string; line: string; tip: string }>
   },
   machine: {
     name: '냉정한 기계형',
-    line: '뚜렷한 나쁜 습관이 안 보여요. 손실은 빨리 끊고, 확인된 정보에만 움직여요. 흔치 않은 유형이에요.',
+    line: '뚜렷한 나쁜 습관이 안 보이고, 아무 때나 누른 것보다 타이밍이 나았어요.',
     tip: '이 감각 그대로 오늘의 차트에서 시즌 계좌 키워 보기',
+  },
+  steady: {
+    name: '탐색 중',
+    line: '눈에 띄는 습관은 없지만, 아무 때나 누른 것보다 나은 타이밍은 아직 보이지 않았어요. 판이 쌓이면 달라질 수 있어요.',
+    tip: '공식 발표가 뜨면 누르고, 가격이 움직일 때까지 들고 있어 보기',
   },
   watcher: {
     name: '관망형',
-    line: '대부분 지켜보고, 확신을 갖고 들어가는 일은 드물어요. 그래서 습관도 실력도 아직 잘 드러나지 않았어요.',
+    line: '사고파는 일이 적거나 들고 있는 시간이 짧아서, 습관도 타이밍도 아직 드러나지 않았어요. 판이 쌓이면 달라져요.',
     tip: '공식 발표가 뜨면 누르고, 가격이 움직일 때까지 들고 있어 보기',
   },
 }
+
+/** Types with no leading habit: nothing is highlighted for them. */
+export const NO_HABIT_TYPES: readonly TypeKey[] = ['machine', 'steady', 'watcher']
 
 /** Rounds with at least one trade needed before a type is shown. */
 export const PROFILE_MIN_ROUNDS = 5
@@ -571,7 +584,19 @@ export type HabitRecord = {
   evidence?: HabitEvidence
 }
 
-export type Profile = { type: TypeKey; scores: HabitScores; rounds: number }
+export type Profile = {
+  type: TypeKey
+  scores: HabitScores
+  rounds: number
+  /** Mean share of the round held, over rounds that recorded it (missing on old profiles). */
+  held?: number
+  /**
+   * What flagged the holder habit: 'rates' when the pooled disposition test
+   * (selling winners faster than losers) is the stronger evidence, 'depth'
+   * when losers fell far deeper than random holds. Picks the holder mission.
+   */
+  holderBasis?: 'rates' | 'depth'
+}
 
 /**
  * Maps pooled evidence (a z statistic) to a 0..1 score that reaches TYPE_MIN
@@ -601,9 +626,10 @@ function poissonTail(k: number, lambda: number) {
   return Math.max(0, 1 - cdf)
 }
 
-/** Participation needed before "no habit" can mean discipline rather than barely playing. */
+/** Participation below which "no habit" means barely playing (관망형). */
 const MACHINE_MIN_HELD = 0.2
 const MACHINE_MIN_TRADES = 2
+/** Mean luck percentile, over at least this many luck-tested rounds, for 기계형. */
 const MACHINE_MIN_LUCK = 0.55
 const MACHINE_LUCK_ROUNDS = 3
 
@@ -677,20 +703,27 @@ export function profileFrom(records: HabitRecord[]): Profile | null {
 
   const scores: HabitScores = { holder, chicken, scalper, chaser, rumor }
   const top = HABIT_KEYS.reduce((a, b) => (scores[b] > scores[a] ? b : a))
+  // Records migrated from v1 carry no participation (heldRatio 0); skip them.
+  const known = recent.filter((r) => r.heldRatio > 0)
+  const held = known.length ? mean(known.map((r) => r.heldRatio)) : undefined
   let type: TypeKey = top
   if (scores[top] < TYPE_MIN) {
-    // No habit stands out. That reads as discipline only if you really played
-    // and beat random pressing; otherwise it is too early to tell.
+    // No habit stands out. 관망형 is about participation only: barely in the
+    // market, or barely trading. An active player is 기계형 only when the
+    // luck tests show timing better than random pressing; otherwise 탐색 중.
+    // (Stop-loss players rank below the median by design, MODEL.md §4, so
+    // luck must never push an active player into 관망형.)
     const lucky = recent.map((r) => r.luckPct).filter((p): p is number => p !== null)
-    // Records migrated from v1 carry no participation (heldRatio 0); skip them.
-    const known = recent.filter((r) => r.heldRatio > 0)
     const active =
       !known.length ||
       (mean(known.map((r) => r.heldRatio)) >= MACHINE_MIN_HELD && mean(known.map((r) => r.trades)) >= MACHINE_MIN_TRADES)
-    const skilled = lucky.length < MACHINE_LUCK_ROUNDS || mean(lucky) >= MACHINE_MIN_LUCK
-    type = active && skilled ? 'machine' : 'watcher'
+    const skilled = lucky.length >= MACHINE_LUCK_ROUNDS && mean(lucky) >= MACHINE_MIN_LUCK
+    type = !active ? 'watcher' : skilled ? 'machine' : 'steady'
   }
-  return { type, scores, rounds: recent.length }
+  const profile: Profile = { type, scores, rounds: recent.length }
+  if (held !== undefined) profile.held = held
+  if (holder > 0) profile.holderBasis = dispScore >= depthScore ? 'rates' : 'depth'
+  return profile
 }
 
 // ---------------------------------------------------------------------------
@@ -711,38 +744,102 @@ export function habitBand(score: number): Band {
   return 'low'
 }
 
-/** Rounds in each window of a trend. */
-export const TREND_WINDOW = 5
+/**
+ * Habit trend windows, in rounds where the habit could be measured. The
+ * baseline is rounds 6-15: the first 5 picked the first profile and mission,
+ * so comparing against them would show regression to the mean as a change.
+ * The latest window is the last 10. Nothing is said before round 25, and the
+ * answer is only re-evaluated every 5 rounds, so each new round is not
+ * another look.
+ */
+export const TREND_SKIP = 5
+export const TREND_WINDOW = 10
+export const TREND_MIN_ROUNDS = 25
+export const TREND_STEP = 5
+/** Two-sided permutation p below this (5% split over the 5 habits on screen). */
+export const TREND_ALPHA = 0.01
+/** And at least this big a change in the mean score. */
+export const TREND_MIN_DIFF = 0.05
+const TREND_PERMUTATIONS = 2000
 
 export type HabitTrend = {
-  /** Mean round score in the first and the latest window, 0..1. */
+  /** Mean round score in the baseline (measurable rounds 6-15) and the latest 10, 0..1. */
   from: number
   to: number
-  /** 'same' unless the change is larger than twice its standard error. */
+  /** 'same' unless a permutation test gives p < TREND_ALPHA and |to - from| >= TREND_MIN_DIFF. */
   change: 'down' | 'up' | 'same'
   /** Rounds where the habit could be measured. */
   rounds: number
+  /** Rounds the comparison used (a multiple of TREND_STEP, at most `rounds`). */
+  evaluatedAt: number
+}
+
+/** Small deterministic generator for the permutation test (mulberry32). */
+function mulberry(seed: number) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
 }
 
 /**
- * First window against the latest window of rounds where the habit could be
- * measured. A change counts only when |to - from| >= 2·√(var₁/n + var₂/n)
- * (learning-design report §3) and is at least 5 points, so noise reads as
- * "비슷해요". Null until there are two full windows.
+ * Whether a two-sided permutation test of the difference in means gives
+ * p < alpha, with p = (1 + permutations at least as extreme) / (B + 1).
+ * Stops as soon as p can no longer get below alpha, so a clear "no" is cheap.
  */
-export function habitTrend(records: readonly HabitRecord[], key: HabitKey, n = TREND_WINDOW): HabitTrend | null {
-  const rs = records.filter((r) => r.measurable[key])
-  if (rs.length < 2 * n) return null
-  const a = rs.slice(0, n).map((r) => r.scores[key])
-  const b = rs.slice(-n).map((r) => r.scores[key])
-  const variance = (xs: number[]) => {
-    const mu = mean(xs)
-    return xs.reduce((s, x) => s + (x - mu) ** 2, 0) / (xs.length - 1)
+export function permutationSignificant(a: readonly number[], b: readonly number[], seed: number, alpha = TREND_ALPHA, B = TREND_PERMUTATIONS) {
+  const all = [...a, ...b]
+  const na = a.length
+  const total = sum(all)
+  const obs = Math.abs(mean([...a]) - mean([...b]))
+  // p < alpha  <=>  extreme + 1 < alpha·(B + 1)
+  const limit = alpha * (B + 1) - 1
+  const rand = mulberry(seed)
+  let extreme = 0
+  for (let i = 0; i < B; i++) {
+    // Partial Fisher-Yates: the first na slots become a random group a.
+    let sa = 0
+    for (let j = 0; j < na; j++) {
+      const k = j + Math.floor(rand() * (all.length - j))
+      const tmp = all[j]
+      all[j] = all[k]
+      all[k] = tmp
+      sa += all[j]
+    }
+    const d = Math.abs(sa / na - (total - sa) / (all.length - na))
+    if (d >= obs - 1e-12) {
+      extreme++
+      if (extreme >= limit) return false
+    }
   }
+  return extreme < limit
+}
+
+/**
+ * Measurable rounds 6-15 against the latest 10, evaluated at the last
+ * multiple of 5 rounds. Null (show "변화는 아직 판단하기 일러요") until 25
+ * measurable rounds. Stationary scripted players get a false change at most
+ * 3% of the time even when checked every 5 rounds (habits.test.ts).
+ */
+export function habitTrend(records: readonly HabitRecord[], key: HabitKey): HabitTrend | null {
+  const rs = records.filter((r) => r.measurable[key])
+  if (rs.length < TREND_MIN_ROUNDS) return null
+  const at = rs.length - (rs.length % TREND_STEP)
+  const used = rs.slice(0, at)
+  const a = used.slice(TREND_SKIP, TREND_SKIP + TREND_WINDOW).map((r) => r.scores[key])
+  const b = used.slice(-TREND_WINDOW).map((r) => r.scores[key])
   const from = mean(a)
   const to = mean(b)
-  const se = Math.sqrt(variance(a) / n + variance(b) / n)
   const diff = to - from
-  const change = Math.abs(diff) >= Math.max(0.05, 2 * se) ? (diff < 0 ? 'down' : 'up') : 'same'
-  return { from, to, change, rounds: rs.length }
+  let change: HabitTrend['change'] = 'same'
+  if (Math.abs(diff) >= TREND_MIN_DIFF) {
+    // Seeded by the habit and the evaluation point: the same history always gives the same answer.
+    const seed = (HABIT_KEYS.indexOf(key) + 1) * 7919 + at * 104729
+    if (permutationSignificant(a, b, seed)) change = diff < 0 ? 'down' : 'up'
+  }
+  return { from, to, change, rounds: rs.length, evaluatedAt: at }
 }

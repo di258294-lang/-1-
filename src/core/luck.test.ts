@@ -147,15 +147,30 @@ describe('luck verdict', () => {
   it('states the chance of a random placement doing as well, never a chance of skill', () => {
     for (const [p, pct] of [[0.002, 0.999], [0.03, 0.97], [0.15, 0.85], [0.5, 0.5], [0.9, 0.1]]) {
       const v = luckVerdict(fake(p, pct))
-      expect(v.headline).toMatch(/^무작위 배치 1,000번 중 (상위|하위) \d+%$/)
-      expect(v.line + v.headline + v.note).not.toMatch(/실력일 가능성|운일 확률|실력일 확률/)
+      expect(v.headline).toMatch(/^아무 때나 누른 1,000판보다 잘한 비율 \d+%$/)
+      expect(v.rank).toMatch(/^무작위 배치 1,000번 중 (상위|하위) \d+%$/)
+      expect(v.line + v.headline + v.note).not.toMatch(/실력일 가능성|운일 확률|실력일 확률|꽤 잘했/)
       expect(v.line + v.headline + v.note).not.toMatch(/—/)
       if (p <= 0.2) {
         expect(v.line).toMatch(/아무렇게나 누른 가상 플레이어 중 이만큼 이상 낸 경우는/)
-        expect(v.line).toMatch(/한 판만으로 실력이라고 단정할 수는 없어요/)
+        expect(v.line).toMatch(/한 판만으로는 알 수 없어요/)
       }
     }
     expect(luckVerdict(fake(0.002, 0.999)).line).toMatch(/1% 미만이에요/)
     expect(luckVerdict(fake(0.03, 0.97)).line).toMatch(/약 3%예요/)
+  })
+
+  it('works the odds out from p instead of a fixed "20판"', () => {
+    expect(luckVerdict(fake(0.01, 0.99)).line).toContain('약 100판에 한 번')
+    expect(luckVerdict(fake(0.03, 0.97)).line).toContain('약 33판에 한 번')
+    expect(luckVerdict(fake(0.15, 0.85)).line).toContain('약 7판에 한 번')
+    expect(luckVerdict(fake(1 / 1001, 1)).line).toContain('이만큼 낸 판은 없었어요')
+    for (const [p, pct] of [[0.01, 0.99], [0.03, 0.97], [0.15, 0.85]]) expect(luckVerdict(fake(p, pct)).line).not.toContain('20판')
+  })
+
+  it('says the headline as the share of random placements beaten, never 0 or 100 for a partial result', () => {
+    expect(luckVerdict(fake(0.03, 0.97)).headline).toBe('아무 때나 누른 1,000판보다 잘한 비율 97%')
+    expect(luckVerdict(fake(0.002, 0.9996)).headline).toBe('아무 때나 누른 1,000판보다 잘한 비율 99%')
+    expect(luckVerdict(fake(0.9996, 0.004)).headline).toBe('아무 때나 누른 1,000판보다 잘한 비율 1%')
   })
 })

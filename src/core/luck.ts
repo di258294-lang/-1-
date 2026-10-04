@@ -156,11 +156,26 @@ export function luckTest(market: Market, held: boolean[], sims = LUCK_SIMS, play
   }
 }
 
-export type LuckVerdict = { headline: string; line: string; note: string }
+export type LuckVerdict = {
+  /** Short headline: "아무 때나 누른 1,000판보다 잘한 비율 62%". */
+  headline: string
+  /** The older rank wording, "무작위 배치 1,000번 중 상위 38%", for screens that still use it. */
+  rank: string
+  line: string
+  note: string
+}
 
 /** "약 3%예요", "1% 미만이에요" for a probability. */
 function chanceIs(p: number) {
   return p < 0.01 ? '1% 미만이에요' : `약 ${Math.round(p * 100)}%예요`
+}
+
+/** The percentile as a whole percent that never rounds a partial result to 0 or 100. */
+function beatShare(percentile: number) {
+  const n = Math.round(percentile * 100)
+  if (n >= 100 && percentile < 1) return 99
+  if (n <= 0 && percentile > 0) return 1
+  return n
 }
 
 /**
@@ -173,15 +188,18 @@ export function luckVerdict(result: LuckResult): LuckVerdict {
   const p = result.pValue
   const top = Math.max(1, Math.round((1 - result.percentile) * 100))
   const bottom = Math.max(1, Math.round(result.percentile * 100))
-  const headline = result.percentile >= 0.5 ? `무작위 배치 ${sims}번 중 상위 ${top}%` : `무작위 배치 ${sims}번 중 하위 ${bottom}%`
+  const rank = result.percentile >= 0.5 ? `무작위 배치 ${sims}번 중 상위 ${top}%` : `무작위 배치 ${sims}번 중 하위 ${bottom}%`
+  const headline = `아무 때나 누른 ${sims}판보다 잘한 비율 ${beatShare(result.percentile)}%`
   const note = `내가 들고 있던 구간들의 길이는 그대로 두고, 같은 차트에서 위치만 무작위로 ${sims}번 바꿔 본 결과와 비교했어요.`
-  // Frequency wording only: how often random placements did this well.
-  // Never P(skill | result): by chance alone a player lands in the top 5%
-  // about once in 20 rounds.
+  // Frequency wording only: how often random placements did this well,
+  // with the odds worked out from p. Never P(skill | result).
   const odds = `아무렇게나 누른 가상 플레이어 중 이만큼 이상 낸 경우는 ${chanceIs(p)}.`
-  const once = '한 판만으로 실력이라고 단정할 수는 없어요.'
-  if (p <= 0.05) return { headline, line: `${odds} 드문 결과지만, 운만으로도 20판에 한 번쯤은 이렇게 나와요. ${once}`, note }
-  if (p <= 0.2) return { headline, line: `${odds} 꽤 잘했지만, ${once}`, note }
-  if (result.percentile >= 0.3) return { headline, line: `${odds} 아무 때나 누른 것과 크게 다르지 않아요.`, note }
-  return { headline, line: '같은 길이로 아무 때나 눌러도 이보다 나은 경우가 더 많았어요.', note }
+  const once = '한 판만으로는 알 수 없어요.'
+  const out = (line: string) => ({ headline, rank, line, note })
+  // p = (1 + placements doing at least as well) / (sims + 1): at its floor, none did.
+  if (p * (result.sims + 1) < 1.5) return out(`아무렇게나 누른 ${sims}판 중 이만큼 낸 판은 없었어요. 드문 결과지만, ${once}`)
+  const every = Math.round(1 / p).toLocaleString('ko-KR')
+  if (p <= 0.2) return out(`${odds} 운만으로도 약 ${every}판에 한 번은 이렇게 나와요. ${once}`)
+  if (result.percentile >= 0.3) return out(`${odds} 아무 때나 누른 것과 크게 다르지 않아요.`)
+  return out('같은 길이로 아무 때나 눌러도 이보다 나은 경우가 더 많았어요.')
 }

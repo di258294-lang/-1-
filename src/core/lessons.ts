@@ -96,8 +96,10 @@ export function productLesson(market: Market): Lesson | null {
       const compounded = (1 + u) ** L
       // Round to tenths of a percent first and derive the differences from
       // the rounded values, so every displayed number adds up exactly.
+      // "단순 2배" is twice the index as shown, so the reader can check it.
+      const uT = Math.round(u * 1000)
       const pT = Math.round(p * 1000)
-      const naiveT = Math.round(naive * 1000)
+      const naiveT = L * uT
       const gapT = pT - naiveT
       const trendT = Math.round((compounded - (1 + naive)) * 1000)
       const dragT = gapT - trendT
@@ -105,7 +107,7 @@ export function productLesson(market: Market): Lesson | null {
       return {
         title: gapT < 0 ? '2배 상품은 출렁일수록 녹아요' : gapT > 0 ? '한 방향으로 쭉 가면 2배보다 더 벌어요' : '이번엔 거의 정확히 2배였어요',
         line:
-          `지수 ${pct(u)}, 2배 상품 ${tenths(pT, '%')}. ${split}` +
+          `지수 ${tenths(uT, '%')}, 2배 상품 ${tenths(pT, '%')}. ${split}` +
           (isShort ? ' 끌림은 기간이 길수록 커져요. 장기 모드에서 1년치를 확인해 보세요.' : ''),
       }
     }
@@ -344,7 +346,7 @@ export function luckLesson(luck: LuckResult, rounds: number, seen: readonly stri
     return {
       id: 'L7',
       title: '한 판은 평범해지기 쉬워요',
-      line: `이번 판은 무작위로 놓아 본 판들 중 ${p >= 0.5 ? '상위' : '하위'} ${rank}%였어요. 한 판의 극단적인 결과는 다음 판에 평범해지기 쉬워서, 실력은 여러 판의 평균으로 봐요.`,
+      line: `이번 판은 무작위로 놓아 본 판들 중 ${p >= 0.5 ? '상위' : '하위'} ${rank}%였어요. 한 판의 극단적인 결과는 다음 판에 평범해지기 쉬워요. 한 판보다 여러 판을 모아 봐야 우연과 구별하기 쉬워져요.`,
     }
   }
   return null

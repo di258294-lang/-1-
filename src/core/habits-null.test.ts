@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   analyzeRound,
+  HABIT_KEYS,
+  habitTrend,
   profileFrom,
   roundInsight,
   tickVolatility,
@@ -93,7 +95,7 @@ const chaser: Style = (m) => {
  * rumors. A long cool-down after each stop would make the returns skewed
  * (many small cuts, one long ride): under the luck test's run-placement null
  * that ranks below the median even with no loss on average, and such a
- * trader is rightly left as 관망형 until their timing shows.
+ * trader is rightly left as 탐색 중 (not 기계형) until their timing shows.
  */
 const disciplined: Style = (m) => {
   const n = m.playTicks
@@ -341,5 +343,73 @@ describe('scripted habits', () => {
     for (const title of ['수익은 빨리 팔고, 손실은 버텼어요', '너무 자주 사고팔았어요', '급하게 오른 뒤에 올라탔어요']) {
       expect(seen).toContain(title)
     }
+  })
+})
+
+describe('habit trend: players who never change are rarely told they did', () => {
+  /** Stored records of one style, cycling through the products. */
+  function pool(style: Style, n: number, seed0: number) {
+    const out: HabitRecord[] = []
+    for (let i = 0; out.length < n && i < n * 3; i++) {
+      const p = play(style, PRODUCTS[i % PRODUCTS.length], seed0 + i)
+      if (p.habits.trades > 0) out.push(p.record)
+    }
+    return out
+  }
+  const pools = {
+    random: pool(randomTrader, 250, 61_000),
+    bagHolder: pool(bagHolder, 250, 62_000),
+    chaser: pool(chaser, 250, 63_000),
+    masher: pool(masher, 250, 64_000),
+  }
+  const draw = (rng: Rng, p: HabitRecord[]) => p[rng.int(0, p.length - 1)]
+  const changed = (recs: HabitRecord[]) =>
+    HABIT_KEYS.some((k) => {
+      const t = habitTrend(recs, k)
+      return !!t && t.change !== 'same'
+    })
+
+  it('says nothing before 25 measurable rounds', () => {
+    expect(habitTrend(pools.bagHolder.slice(0, 24), 'holder')).toBeNull()
+    expect(habitTrend(pools.bagHolder.slice(0, 25), 'holder')).not.toBeNull()
+  })
+
+  it('gives a false change at most 3% of the time, checked every 5 rounds from 25 to 40', () => {
+    for (const [name, p] of Object.entries(pools)) {
+      const rng = createRng(name.length * 977)
+      const P = 300
+      let ever = 0
+      for (let i = 0; i < P; i++) {
+        const recs = Array.from({ length: 40 }, () => draw(rng, p))
+        if ([25, 30, 35, 40].some((r) => changed(recs.slice(0, r)))) ever++
+      }
+      expect(ever / P, name).toBeLessThanOrEqual(0.03)
+    }
+  })
+
+  it('does not read regression to the mean as a change: the rounds that picked the profile are left out', () => {
+    // Mixed players, never changing; keep those whose first 5 rounds looked most like a bag holder.
+    const rng = createRng(5)
+    const rows: Array<{ first: number; down: boolean }> = []
+    for (let i = 0; i < 1500; i++) {
+      const pi = rng.next() * 0.6
+      const recs = Array.from({ length: 25 }, () => draw(rng, rng.next() < pi ? pools.bagHolder : pools.random))
+      const first = recs.slice(0, 5).reduce((a, r) => a + r.scores.holder, 0) / 5
+      rows.push({ first, down: habitTrend(recs, 'holder')?.change === 'down' })
+    }
+    rows.sort((a, b) => b.first - a.first)
+    const top = rows.slice(0, rows.length / 5)
+    expect(top.filter((r) => r.down).length / top.length).toBeLessThanOrEqual(0.03)
+  })
+
+  it('still sees a real change: bag holder for 15 rounds, then random', () => {
+    const rng = createRng(78)
+    const P = 300
+    let seen = 0
+    for (let i = 0; i < P; i++) {
+      const recs = Array.from({ length: 30 }, (_, r) => draw(rng, r < 15 ? pools.bagHolder : pools.random))
+      if (habitTrend(recs, 'holder')?.change === 'down') seen++
+    }
+    expect(seen / P).toBeGreaterThan(0.25)
   })
 })

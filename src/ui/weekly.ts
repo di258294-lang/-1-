@@ -31,7 +31,8 @@ function progress(today = dateKey()): WeeklyProgress | null {
   }
 }
 
-const countText = (p: WeeklyProgress) => (p.done ? '완료' : `${p.passed}/${p.goal}`)
+/** "3번 중 1번", or "완료": words, not a fraction. */
+const countText = (p: WeeklyProgress) => (p.done ? '완료' : `${p.goal}번 중 ${p.passed}번`)
 
 /** "10월 5일~11일", "9월 28일~10월 4일" */
 function weekRange(p: WeeklyProgress) {
@@ -44,6 +45,7 @@ function weekRange(p: WeeklyProgress) {
 const MARK_CLASS: Record<DayMark, string> = {
   pass: 'wk-played',
   fail: 'wk-missed',
+  skip: 'wk-before',
   none: 'wk-before',
   today: 'wk-today',
   future: 'wk-future',
@@ -52,6 +54,7 @@ const MARK_CLASS: Record<DayMark, string> = {
 const MARK_WORD: Record<DayMark, string> = {
   pass: '해낸 날',
   fail: '못 한 날',
+  skip: '소문이 없어서 세지 않은 날',
   none: '안 한 날',
   today: '오늘',
   future: '남은 날',
@@ -78,7 +81,10 @@ function dayCells(p: WeeklyProgress, today: string) {
   )
 }
 
-const goalLine = (p: WeeklyProgress) => `이번 주 오늘의 차트 중 ${p.goal}번 해내면 완료예요.`
+const goalLine = (p: WeeklyProgress) => {
+  const skipped = p.days.filter((d) => d.mark === 'skip').length
+  return `이번 주 오늘의 차트 중 ${p.goal}번 해내면 완료예요.${skipped ? ` 소문이 없어서 세지 않은 날이 ${skipped}일 있어요.` : ''}`
+}
 
 function showWeeklySheet(p: WeeklyProgress, today: string, openRecords: () => void) {
   let close = () => {}
@@ -99,7 +105,7 @@ function showWeeklySheet(p: WeeklyProgress, today: string, openRecords: () => vo
       h('h2', { id: 'weekly-title' }, p.rule.title),
       h('p', { class: 'sheet-body' }, `${p.rule.detail} ${goalLine(p)}`),
       dayCells(p, today),
-      h('p', { class: 'weekly-count num' }, p.done ? '이번 주 챌린지 완료' : `${p.passed}/${p.goal} 해냈어요`),
+      h('p', { class: 'weekly-count num' }, p.done ? '이번 주 챌린지 완료' : `${p.goal}번 중 ${p.passed}번 해냈어요`),
       h(
         'div',
         { class: 'sheet-actions' },
@@ -121,7 +127,7 @@ function showWeeklySheet(p: WeeklyProgress, today: string, openRecords: () => vo
   close = openSheet(scrim, { initialFocus: ok })
 }
 
-/** One home row: this week's rule and "2/3". Null if progress can't be read. */
+/** One home row: "이번 주 챌린지 · <rule>" and "3번 중 1번". Null if progress can't be read. */
 export function weeklyRow(openRecords: () => void): HTMLElement | null {
   const today = dateKey()
   const p = progress(today)
@@ -130,10 +136,11 @@ export function weeklyRow(openRecords: () => void): HTMLElement | null {
     'button',
     {
       class: 'list-row weekly-row',
-      'aria-label': `이번 주 챌린지: ${p.rule.title}. ${p.done ? '완료' : `${p.goal}번 중 ${p.passed}번 해냈어요`}`,
+      'aria-label': `이번 주 챌린지 · ${p.rule.title}. ${p.done ? '완료' : `${p.goal}번 중 ${p.passed}번 해냈어요`}`,
       onclick: () => showWeeklySheet(p, today, openRecords),
     },
-    h('span', { class: 'list-label weekly-label' }, p.rule.title),
+    // Not .weekly-label (one clipped line): the rule wraps under its label.
+    h('span', { class: 'list-label' }, '이번 주 챌린지', h('small', null, p.rule.title)),
     h(
       'span',
       { class: 'list-value num' },
@@ -141,6 +148,23 @@ export function weeklyRow(openRecords: () => void): HTMLElement | null {
       h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
     ),
   )
+}
+
+/**
+ * One line for the daily result screen, about the day just played:
+ * "이번 주 챌린지 3번 중 2번 · 하루 더 하면 완료예요", or why the day didn't
+ * count. Null if progress can't be read.
+ */
+export function weeklyResultLine(today = dateKey()): string | null {
+  const p = progress(today)
+  if (!p) return null
+  const mark = p.days.find((d) => d.key === today)?.mark
+  if (mark === 'skip') return '이번 주 챌린지 · 오늘 차트엔 소문이 없어서 세지 않았어요.'
+  if (p.done) return '이번 주 챌린지 완료예요.'
+  const left = p.goal - p.passed
+  const daysLeft = p.days.filter((d) => d.key > today).length
+  const tail = left <= daysLeft ? `${left === 1 ? '하루' : `${left}번`} 더 하면 완료예요.` : '월요일엔 새 챌린지가 나와요.'
+  return `이번 주 챌린지 ${countText(p)} · ${tail}`
 }
 
 /** The records screen card, and below it every finished week that was completed. */
