@@ -2,8 +2,15 @@ import { describe, expect, it, vi } from 'vitest'
 import type { HabitRecord } from './habits'
 import { SEASON_START } from './season'
 import {
+  blindBackend,
+  coalescedWriter,
   createStore,
   hydrate,
+  hydrateAsync,
+  LIVE_KEY,
+  parseLive,
+  SAVE_KEY,
+  withTimeout,
   LEGACY_NICK_KEY,
   memoryBackend,
   migrateLegacyNick,
@@ -165,7 +172,8 @@ describe('corrupt and invalid saves', () => {
     expect(store.daily('2026-10-01')?.yourReturn).toBe(0.05)
     store.recordPractice(0.1, 2)
     store.markIntroSeen()
-    expect(store.startDaily('2026-10-02', 0.01)).toBe(true)
+    // A daily that can't be recorded can't be played (a reload would replay it).
+    expect(store.startDaily('2026-10-02', 0.01)).toBe(false)
     expect(writes).toEqual([])
     expect(backups).toEqual([])
     expect(backend.peek()).toBe(raw)
@@ -501,5 +509,235 @@ describe('nickname and pending challenge', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+})
+
+describe('read cache', () => {
+  it('reads the backend once until a write or an invalidation', () => {
+    const backend = memoryBackend(JSON.stringify({ v: 2, seenIntro: true }))
+    const read = vi.spyOn(backend, 'read')
+    const store = createStore(backend)
+    for (let i = 0; i < 10; i++) store.seenIntro()
+    expect(read).toHaveBeenCalledTimes(1)
+    store.recordPractice(0.1, 1) // read-modify-write: one fresh read
+    store.practice()
+    expect(read).toHaveBeenCalledTimes(2)
+    store.invalidate()
+    store.practice()
+    store.practice()
+    expect(read).toHaveBeenCalledTimes(3)
+  })
+
+  it('still re-reads before starting or recording a daily (two tabs)', () => {
+    const backend = memoryBackend()
+    const a = createStore(backend)
+    const b = createStore(backend)
+    expect(b.daily('2026-10-04')).toBeUndefined() // b's cache: no entry
+    expect(a.startDaily('2026-10-04', 0)).toBe(true)
+    expect(b.canStartDaily('2026-10-04')).toBe(false)
+    expect(b.startDaily('2026-10-04', 0)).toBe(false)
+  })
+})
+
+describe('batch', () => {
+  it('writes several changes once, and reads inside see them', () => {
+    const { store, writes } = setup()
+    const out = store.batch(() => {
+      store.recordPractice(0.1, 1)
+      store.recordHabit(record('p:1'))
+      store.batch(() => store.markLessonSeen('L1'))
+      return store.practice().rounds
+    })
+    expect(out).toBe(1)
+    expect(writes).toHaveLength(1)
+    const file = JSON.parse(writes[0])
+    expect(file.practice.rounds).toBe(1)
+    expect(file.habits).toHaveLength(1)
+    expect(file.coach.lessons).toEqual(['L1'])
+  })
+
+  it('writes nothing when nothing changed, and keeps changes made before a throw', () => {
+    const { store, writes } = setup()
+    store.batch(() => store.markSeasonsSeen([]))
+    expect(writes).toHaveLength(0)
+    expect(() =>
+      store.batch(() => {
+        store.markIntroSeen()
+        throw new Error('boom')
+      }),
+    ).toThrow('boom')
+    expect(writes).toHaveLength(1)
+    expect(store.seenIntro()).toBe(true)
+  })
+})
+
+describe('live checkpoint', () => {
+  const key = '2026-10-05'
+
+  it('writes a small record, not the save, and loading folds it in', () => {
+    const { store, backend, writes } = setup()
+    store.startDaily(key, 0.03)
+    const before = writes.length
+    for (let i = 0; i < 5; i++) store.progressDaily(key, { yourReturn: -0.01 * i, held: [true, true, false] })
+    expect(writes.length).toBe(before)
+    expect(backend.peekLive()!.length).toBeLessThan(200)
+    expect(store.daily(key)).toMatchObject({ yourReturn: -0.04, held: [true, true, false], abandoned: true })
+    // App killed: the next session sees the checkpoint, not the 0% placeholder.
+    const next = createStore(backend)
+    expect(next.daily(key)).toMatchObject({ yourReturn: -0.04, abandoned: true })
+    expect(next.accountAfter(key)).toBeCloseTo(SEASON_START * 0.96)
+    // Its next write persists the folded entry.
+    next.markIntroSeen()
+    expect(stored(backend).daily[key].yourReturn).toBe(-0.04)
+  })
+
+  it('is removed when the round finishes, and never touches a finished day', () => {
+    const { store, backend } = setup()
+    store.startDaily(key, 0.03)
+    store.progressDaily(key, { yourReturn: -0.2, held: [true] })
+    expect(store.recordDaily(key, finished({ yourReturn: 0.07 }))).toBe(true)
+    expect(backend.peekLive()).toBeNull()
+    // A stale record left behind can't rewrite a finished day.
+    backend.writeLive(JSON.stringify({ key, yourReturn: -0.5, held: '1' }))
+    expect(createStore(backend).daily(key)?.yourReturn).toBe(0.07)
+  })
+
+  it('ignores a malformed record', () => {
+    for (const raw of ['', '{', '{"key":"x","yourReturn":0,"held":""}', '{"key":"2026-10-05","yourReturn":-3,"held":""}']) {
+      expect(parseLive(raw)).toBeNull()
+    }
+  })
+
+  it('falls back to the save for a backend without a live slot', () => {
+    let mem: string | null = null
+    const store = createStore({ read: () => mem, write: (s) => void (mem = s) })
+    store.startDaily(key, 0.03)
+    store.progressDaily(key, { yourReturn: -0.2, held: [true] })
+    expect(JSON.parse(mem!).daily[key].yourReturn).toBe(-0.2)
+  })
+})
+
+describe('a daily that cannot be recorded', () => {
+  it('is not started when the placeholder write fails', () => {
+    const store = createStore(
+      memoryBackend(null, () => {
+        throw new Error('QuotaExceededError')
+      }),
+    )
+    expect(store.startDaily('2026-10-05', 0)).toBe(false)
+    expect(store.daily('2026-10-05')).toBeUndefined()
+    expect(store.lastWriteFailed()).toBe(true)
+  })
+
+  it('is not started while storage is unreadable', () => {
+    const store = createStore(blindBackend())
+    expect(store.startDaily('2026-10-05', 0)).toBe(false)
+  })
+
+  it('re-archives a month another tab closed while this round ran', () => {
+    const backend = memoryBackend()
+    const a = createStore(backend)
+    const b = createStore(backend)
+    a.startDaily('2026-10-31', 0)
+    a.progressDaily('2026-10-31', { yourReturn: 0.03, held: [true] })
+    expect(createStore(backend).closeSeasons('2026-11-01')).toEqual(['2026-10'])
+    expect(b.pastSeasons()[0].final).toBeCloseTo(SEASON_START * 1.03)
+    a.recordDaily('2026-10-31', finished({ yourReturn: 0.05 }))
+    b.invalidate() // the storage event
+    expect(b.pastSeasons()[0].final).toBeCloseTo(SEASON_START * 1.05)
+  })
+})
+
+describe('habit evidence', () => {
+  it('drops a malformed evidence block on load', () => {
+    const evidence = { exits: 1, exitZ: 0.5, losses: 2, depth: -0.1, depthBase: -0.05, rumors: 0, rumorHits: 0, rumorChance: 0, chases: 1, chaseChance: 0.2 }
+    for (const bad of [null, 'x', {}, { ...evidence, exits: -1 }, { ...evidence, depth: 'deep' }]) {
+      const loaded = parseSave(JSON.stringify({ v: 2, habits: [{ ...record('p:1'), evidence: bad }] }))
+      expect(loaded.file.habits[0].evidence).toBeUndefined()
+      expect(loaded.issues).toContain('habits.0.evidence')
+      expect(loaded.backup).toBe(true)
+    }
+    const good = parseSave(JSON.stringify({ v: 2, habits: [{ ...record('p:1'), evidence }] }))
+    expect(good.file.habits[0].evidence).toEqual(evidence)
+    expect(good.issues).toEqual([])
+  })
+})
+
+describe('coalesced writes', () => {
+  it('send only the latest text after the one in flight', async () => {
+    const sent: string[] = []
+    let release = () => {}
+    const write = coalescedWriter(async (s: string) => {
+      sent.push(s)
+      if (s === 'a') await new Promise<void>((r) => (release = r))
+    })
+    const done = write('a')
+    await Promise.resolve()
+    await Promise.resolve()
+    void write('b')
+    void write('c')
+    release()
+    await done
+    expect(sent).toEqual(['a', 'c'])
+  })
+
+  it('reject when the last write failed', async () => {
+    const write = coalescedWriter(async () => {
+      throw new Error('bridge')
+    })
+    await expect(write('x')).rejects.toThrow()
+  })
+})
+
+describe('async boot (Toss)', () => {
+  const slow = (data: Map<string, string>, ms: number) => ({
+    get: (k: string) => new Promise<string | null>((r) => setTimeout(() => r(data.get(k) ?? null), ms)),
+    set: async (k: string, v: string) => void data.set(k, v),
+  })
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  it('tells a timeout from a stored null', async () => {
+    expect(await withTimeout(Promise.resolve(null), 50)).toEqual({ status: 'value', value: null })
+    expect(await withTimeout(sleep(50), 5)).toEqual({ status: 'timeout' })
+    expect((await withTimeout(Promise.reject(new Error('x')), 50)).status).toBe('error')
+  })
+
+  it('never overwrites the save when the read is slow, and loads it when it comes', async () => {
+    const real = JSON.stringify({ v: 2, seenIntro: true, practice: { rounds: 40, traded: 40, best: 0.3 } })
+    const data = new Map([[SAVE_KEY, real]])
+    const onLate = vi.fn()
+    expect(await hydrateAsync(slow(data, 40), { timeoutMs: 5, onLate })).toBe(false)
+    // Blind: an empty view, changes stay in memory, nothing is written.
+    expect(save.practice().rounds).toBe(0)
+    save.markIntroSeen()
+    save.recordPractice(0.1, 1)
+    expect(save.lastWriteFailed()).toBe(true)
+    await sleep(10)
+    expect(data.get(SAVE_KEY)).toBe(real)
+    // The late answer arrives: the real save is loaded and the screen told.
+    await sleep(60)
+    expect(onLate).toHaveBeenCalledOnce()
+    expect(save.practice().rounds).toBe(40)
+    expect(save.lastWriteFailed()).toBe(false)
+    save.recordPractice(0.2, 1)
+    await sleep(0)
+    expect(JSON.parse(data.get(SAVE_KEY)!).practice.rounds).toBe(41)
+  })
+
+  it('loads in time, with the live checkpoint, and writes the latest text only', async () => {
+    const data = new Map([
+      [SAVE_KEY, JSON.stringify({ v: 2, daily: { '2026-10-05': { yourReturn: 0, buyHoldReturn: 0, held: '', trades: 0, title: '', abandoned: true } } })],
+      [LIVE_KEY, JSON.stringify({ key: '2026-10-05', yourReturn: -0.07, held: '0.3' })],
+    ])
+    const set = vi.fn(async (k: string, v: string) => void data.set(k, v))
+    expect(await hydrateAsync({ get: slow(data, 1).get, set }, { timeoutMs: 500 })).toBe(true)
+    expect(save.daily('2026-10-05')?.yourReturn).toBe(-0.07)
+    save.markIntroSeen()
+    save.recordPractice(0.1, 1)
+    save.recordPractice(0.2, 1)
+    await sleep(0)
+    const saves = set.mock.calls.filter(([k]) => k === SAVE_KEY)
+    expect(saves).toHaveLength(1)
+    expect(JSON.parse(saves[0][1]).practice.rounds).toBe(2)
   })
 })

@@ -1,6 +1,6 @@
 import { cleanName } from './challenge'
 import { decodeHeld, encodeHeld } from './codec'
-import { HABIT_KEYS, type HabitCounts, type HabitKey, type HabitRecord, type HabitScores } from './habits'
+import { HABIT_KEYS, type HabitCounts, type HabitEvidence, type HabitKey, type HabitRecord, type HabitScores } from './habits'
 import { PRODUCT_ORDER, PRODUCTS, type ProductKey } from './products'
 import {
   archiveSeason,
@@ -11,7 +11,7 @@ import {
   type DailyHistoryItem,
   type SeasonSummary,
 } from './records'
-import { accountAfter, accountBefore } from './season'
+import { accountAfter, accountBefore, seasonOf } from './season'
 import { emptyMissionState, isMissionId, type ActiveMission, type MissionState } from './missions'
 import { freezesToApply, playedDays, streakDays, streakState, type StreakState } from './streak'
 import { DEFAULT_SETTINGS, TOGGLE_KEYS, type Settings } from './types'
@@ -183,8 +183,18 @@ function normDaily(x: unknown, issues: string[], path: string): StoredDaily | nu
   return out
 }
 
+const EVIDENCE_COUNTS = ['exits', 'losses', 'rumors', 'rumorHits', 'chases'] as const
+const EVIDENCE_SUMS = ['exitZ', 'depth', 'depthBase', 'rumorChance', 'chaseChance'] as const
+
+/** HabitEvidence with every field present and finite (counts never negative). */
+function isEvidence(x: unknown): x is HabitEvidence {
+  if (!isObj(x)) return false
+  return EVIDENCE_COUNTS.every((k) => isNum(x[k]) && x[k] >= 0) && EVIDENCE_SUMS.every((k) => isNum(x[k]))
+}
+
 /**
- * Habit records are owned by habits.ts; unknown extra fields are kept as-is.
+ * Habit records are owned by habits.ts; unknown extra fields are kept as-is,
+ * except `evidence`, which the profile pools: a malformed one is dropped.
  * v1 entries hold only { id, scores } and get the defaults below.
  */
 function normHabit(x: unknown, issues: string[], path: string): HabitRecord | null {
@@ -203,8 +213,9 @@ function normHabit(x: unknown, issues: string[], path: string): HabitRecord | nu
   if (x.counts !== undefined && !isObj(x.counts)) issues.push(`${path}.counts`)
   const count = (k: keyof HabitCounts) => (isNum(c[k]) && c[k] >= 0 ? c[k] : 0)
   const luck = x.luckPct
-  return {
-    ...x,
+  const { evidence, ...rest } = x
+  const out: HabitRecord = {
+    ...rest,
     id: x.id,
     at: field(x, 'at', isStr, '', issues, path),
     product: field(x, 'product', isProduct, 'stock', issues, path),
@@ -216,6 +227,9 @@ function normHabit(x: unknown, issues: string[], path: string): HabitRecord | nu
     counts: { sellUp: count('sellUp'), expUp: count('expUp'), sellDown: count('sellDown'), expDown: count('expDown') },
     luckPct: isNum(luck) && luck >= 0 && luck <= 1 ? luck : null,
   }
+  if (isEvidence(evidence)) out.evidence = { ...evidence }
+  else if (evidence !== undefined) issues.push(`${path}.evidence`)
+  return out
 }
 
 // --- coaching ---------------------------------------------------------------
@@ -416,6 +430,36 @@ export function parseSave(raw: string | null): Loaded {
 }
 
 // ---------------------------------------------------------------------------
+// The live checkpoint: a small record under its own key, so a running daily
+// round never rewrites the whole save. Loading folds it into the abandoned
+// placeholder it belongs to; finishing the round removes it.
+
+export const LIVE_KEY = 'hold.live'
+
+type LiveCheckpoint = { key: string; yourReturn: number; held: string }
+
+export function parseLive(raw: string | null): LiveCheckpoint | null {
+  if (!raw) return null
+  try {
+    const x: unknown = JSON.parse(raw)
+    if (!isObj(x) || !isDateKey(x.key) || !isNum(x.yourReturn) || x.yourReturn < -1) return null
+    if (!isStr(x.held) || decodeHeld(x.held) === null) return null
+    return { key: x.key, yourReturn: x.yourReturn, held: x.held }
+  } catch {
+    return null
+  }
+}
+
+/** Applies a checkpoint to its day, only while that day is still an abandoned placeholder. */
+function foldLive(f: SaveFile, live: LiveCheckpoint | null): boolean {
+  const entry = live && f.daily[live.key]
+  if (!live || !entry?.abandoned) return false
+  if (entry.yourReturn === live.yourReturn && entry.held === live.held) return false
+  f.daily[live.key] = { ...entry, yourReturn: live.yourReturn, held: live.held }
+  return true
+}
+
+// ---------------------------------------------------------------------------
 // Backends
 
 /**
@@ -423,31 +467,40 @@ export function parseSave(raw: string | null): Loaded {
  * store then plays from memory and never writes blind. write() signals
  * failure by throwing, or by returning a promise that rejects (async native
  * storage). backup() stores a copy of a corrupt file somewhere else.
+ * readLive()/writeLive() hold the live checkpoint (null removes it); a
+ * backend without them gets checkpoints written into the save itself.
  */
 export type StorageBackend = {
   read(): string | null
   write(s: string): void | Promise<unknown>
   backup?(raw: string): void
+  readLive?(): string | null
+  writeLive?(s: string | null): void | Promise<unknown>
 }
 
-export function localStorageBackend(key = SAVE_KEY, backupKey = BACKUP_KEY): StorageBackend {
+export function localStorageBackend(key = SAVE_KEY, backupKey = BACKUP_KEY, liveKey = LIVE_KEY): StorageBackend {
   return {
     read: () => localStorage.getItem(key),
     write: (s) => localStorage.setItem(key, s),
     backup: (raw) => localStorage.setItem(backupKey, raw),
+    readLive: () => localStorage.getItem(liveKey),
+    writeLive: (s) => (s === null ? localStorage.removeItem(liveKey) : localStorage.setItem(liveKey, s)),
   }
 }
 
 /**
  * Keeps the text in memory and mirrors every write to `write`. Used by
  * hydrate() for platforms whose storage loads asynchronously, and by tests.
+ * The live checkpoint is kept in memory too, mirrored to `live.write`.
  */
 export function memoryBackend(
   initial: string | null = null,
   write: (s: string) => void | Promise<unknown> = () => {},
   backup?: (raw: string) => void,
-): StorageBackend & { peek(): string | null } {
+  live: { initial?: string | null; write?: (s: string | null) => void | Promise<unknown> } = {},
+): Required<Pick<StorageBackend, 'readLive' | 'writeLive'>> & StorageBackend & { peek(): string | null; peekLive(): string | null } {
   let mem = initial
+  let liveMem = live.initial ?? null
   return {
     read: () => mem,
     write(s) {
@@ -455,8 +508,22 @@ export function memoryBackend(
       return write(s)
     },
     backup,
+    readLive: () => liveMem,
+    writeLive(s) {
+      liveMem = s
+      return live.write?.(s)
+    },
     peek: () => mem,
+    peekLive: () => liveMem,
   }
+}
+
+/** Storage that has not answered yet: the store goes blind (memory only, nothing written). */
+export function blindBackend(): StorageBackend {
+  const notLoaded = () => {
+    throw new Error('storage not loaded')
+  }
+  return { read: notLoaded, write: notLoaded }
 }
 
 // ---------------------------------------------------------------------------
@@ -464,26 +531,38 @@ export function memoryBackend(
 
 const isPromise = (x: unknown): x is Promise<unknown> => isObj(x) && typeof (x as { then?: unknown }).then === 'function'
 
+type Snapshot = { raw: string | null; file: SaveFile; readOnly: boolean }
+
 export function createStore(backend: StorageBackend) {
-  /** Parsed file for the raw text last seen; reused while the raw is unchanged. */
-  let cache: { raw: string | null; file: SaveFile; readOnly: boolean } | null = null
+  /**
+   * Parsed file for the raw text last seen. Reads use it as long as it is
+   * not stale; every change re-reads the backend first (read-modify-write).
+   * It goes stale when another tab writes (invalidate) or the backend changes.
+   */
+  let cache: Snapshot | null = null
+  let stale = true
   /** The backend could not be read: play from memory, never overwrite blind. */
   let blind = false
   let writeFailed = false
+  /** Set inside batch(): changes collect here and are written once at the end. */
+  let batching: { snap: Snapshot; dirty: boolean } | null = null
   /** Daily keys whose placeholder this store instance (session) created. */
   const live = new Set<string>()
   const listeners = new Set<() => void>()
 
-  /** Re-reads the backend; parses again only when the text changed. */
-  function current() {
+  /** A fresh read of the backend; parses again only when the text changed. */
+  function load(): Snapshot {
+    if (batching) return batching.snap
     let raw: string | null
     try {
       raw = backend.read()
       blind = false
     } catch {
       blind = true
+      stale = false
       return (cache ??= { raw: null, file: emptySave(), readOnly: false })
     }
+    stale = false
     if (cache && cache.raw === raw) return cache
     const loaded = parseSave(raw)
     if (loaded.backup && raw) {
@@ -493,43 +572,90 @@ export function createStore(backend: StorageBackend) {
         // Nowhere to put it; the repaired file is still better than a white screen.
       }
     }
+    try {
+      foldLive(loaded.file, parseLive(backend.readLive?.() ?? null))
+    } catch {
+      // No live checkpoint to read.
+    }
     cache = { raw, file: loaded.file, readOnly: loaded.readOnly }
     return cache
   }
 
+  /** The cached file for reads; re-reads only when stale. */
+  function current(): Snapshot {
+    if (batching) return batching.snap
+    if (cache && !stale) return cache
+    return load()
+  }
+
   const file = () => current().file
 
-  /**
-   * Read-modify-write: fresh read, apply `change`, write the whole file.
-   * `change` returns false when it changed nothing, which skips the write.
-   */
-  function mutate(change: (f: SaveFile) => boolean) {
-    const c = current()
-    const f = c.file
-    if (!change(f)) return
-    if (c.readOnly || blind) {
+  /** Writes a changed snapshot out (or keeps it in memory when it must not be written). */
+  function commit(snap: Snapshot) {
+    if (snap.readOnly || blind) {
       // Newer save or unreadable storage: keep the change for this session only.
       if (blind) writeFailed = true
-      cache = { ...c, file: f }
+      cache = snap
       return
     }
-    const text = JSON.stringify(f)
+    const text = JSON.stringify(snap.file)
     try {
       const result = backend.write(text)
       writeFailed = false
-      cache = { raw: text, file: f, readOnly: false }
+      cache = { raw: text, file: snap.file, readOnly: false }
       if (isPromise(result)) result.catch(() => (writeFailed = true))
     } catch {
       // Full or blocked storage. Keep the change in memory against the old
       // raw text, so this session still sees it and the next write retries.
       writeFailed = true
-      cache = { raw: c.raw, file: f, readOnly: false }
+      cache = { raw: snap.raw, file: snap.file, readOnly: false }
     }
+  }
+
+  /**
+   * Read-modify-write: fresh read, apply `change`, write the whole file.
+   * `change` returns false when it changed nothing, which skips the write.
+   * Inside batch() the change joins the batch's single write.
+   */
+  function mutate(change: (f: SaveFile) => boolean) {
+    if (batching) {
+      if (change(batching.snap.file)) batching.dirty = true
+      return
+    }
+    const snap = load()
+    if (change(snap.file)) commit(snap)
+  }
+
+  function writeLive(text: string | null): boolean {
+    if (!backend.writeLive) return false
+    try {
+      const result = backend.writeLive(text)
+      if (isPromise(result)) result.catch(() => (writeFailed = true))
+    } catch {
+      writeFailed = true
+    }
+    return true
   }
 
   const decode = (d: StoredDaily): SavedDaily => ({ ...d, held: decodeHeld(d.held) ?? [] })
 
   const store = {
+    /**
+     * Runs `fn` as one read-modify-write: every change inside it lands in a
+     * single write at the end, against one fresh read at the start. Reads
+     * inside see the changes made so far. Nested batches join the outer one.
+     */
+    batch<T>(fn: () => T): T {
+      if (batching) return fn()
+      batching = { snap: load(), dirty: false }
+      try {
+        return fn()
+      } finally {
+        const b = batching
+        batching = null
+        if (b.dirty) commit(b.snap)
+      }
+    },
     daily(key: string): SavedDaily | undefined {
       const d = file().daily[key]
       return d && decode(d)
@@ -539,16 +665,19 @@ export function createStore(backend: StorageBackend) {
      * at all, in this tab or any other.
      */
     canStartDaily(key: string): boolean {
-      return !file().daily[key]
+      return !load().file.daily[key]
     },
     /**
      * Called the moment a daily round goes live, so reloading mid-round cannot
      * be used to fish for a better chart run. Returns false when an entry
-     * already exists (finished or abandoned, maybe by another tab): the round
-     * must not be played. Only the store that created the placeholder may
-     * checkpoint or finish it.
+     * already exists (finished or abandoned, maybe by another tab), or when
+     * the round could not be recorded (read-only or unreadable storage, or
+     * the placeholder write failed): the round must not be played. Only the
+     * store that created the placeholder may checkpoint or finish it.
      */
     startDaily(key: string, buyHoldReturn: number): boolean {
+      const snap = load()
+      if (snap.readOnly || blind) return false
       let started = false
       mutate((f) => {
         if (f.daily[key]) return false
@@ -556,6 +685,12 @@ export function createStore(backend: StorageBackend) {
         live.add(key)
         return (started = true)
       })
+      if (started && writeFailed && !batching) {
+        // Not stored: a reload could play it again, so don't play it at all.
+        delete current().file.daily[key]
+        live.delete(key)
+        return false
+      }
       return started
     },
     /**
@@ -569,22 +704,37 @@ export function createStore(backend: StorageBackend) {
         const existing = f.daily[key]
         if (existing && !(existing.abandoned && live.has(key))) return false
         f.daily[key] = { ...entry, held: encodeHeld(entry.held) }
-        live.delete(key)
+        // Finishing our own round in a month another tab already closed: the
+        // archive took the checkpoint, so take the final result instead.
+        // (Any other late entry leaves a closed month alone.)
+        const season = seasonOf(key)
+        if (existing && f.seasons[season]) f.seasons[season] = archiveSeason(f.daily, season)
         return (saved = true)
       })
+      if (saved && live.delete(key)) writeLive(null)
       return saved
     },
     /**
      * Checkpoint a live daily round, so quitting by reload or app kill keeps
-     * the result so far instead of 0%. Only touches this session's placeholder.
+     * the result so far instead of 0%. Only touches this session's
+     * placeholder. Cheap: it writes the small live record (LIVE_KEY), not the
+     * save; loading folds it back in.
      */
     progressDaily(key: string, progress: { yourReturn: number; held: boolean[] }) {
-      mutate((f) => {
-        const entry = f.daily[key]
-        if (!entry?.abandoned || !live.has(key)) return false
-        f.daily[key] = { ...entry, yourReturn: progress.yourReturn, held: encodeHeld(progress.held) }
-        return true
-      })
+      const snap = current()
+      const entry = snap.file.daily[key]
+      if (!entry?.abandoned || !live.has(key)) return
+      const checkpoint: LiveCheckpoint = { key, yourReturn: progress.yourReturn, held: encodeHeld(progress.held) }
+      // This session sees it at once.
+      snap.file.daily[key] = { ...entry, yourReturn: checkpoint.yourReturn, held: checkpoint.held }
+      if (snap.readOnly || blind) return
+      if (!writeLive(JSON.stringify(checkpoint))) {
+        // No live slot: into the save itself (the whole file, so it costs more).
+        mutate((f) => {
+          foldLive(f, checkpoint)
+          return true
+        })
+      }
     },
     /** `trades` decides whether the round counts toward unlocks. */
     recordPractice(yourReturn: number, trades: number) {
@@ -660,7 +810,8 @@ export function createStore(backend: StorageBackend) {
     },
     /**
      * Run on app open: archives every past month not archived yet. An
-     * archive is computed once and never changes. Returns the closed months.
+     * archive is computed once; only a daily finishing late into an archived
+     * month (recordDaily) updates it. Returns the closed months.
      */
     closeSeasons(today: string): string[] {
       let closed: string[] = []
@@ -783,7 +934,11 @@ export function createStore(backend: StorageBackend) {
         return true
       })
     },
-    /** True after the latest write failed (storage full or blocked); cleared by the next success. */
+    /**
+     * True after the latest write failed (storage full or blocked, or not
+     * loaded yet); cleared by the next success. Async writes (Toss) set it
+     * when their promise rejects.
+     */
     lastWriteFailed() {
       return writeFailed
     },
@@ -791,9 +946,18 @@ export function createStore(backend: StorageBackend) {
     readOnly() {
       return current().readOnly
     },
-    /** Drop the cache (another tab wrote) and tell subscribers. */
-    invalidate() {
-      cache = null
+    /**
+     * Another tab wrote (or the backend was swapped): the next read goes back
+     * to the backend, and subscribers are told. `reset` also forgets the
+     * cached file and the write-failure flag (a new backend).
+     */
+    invalidate(reset = false) {
+      stale = true
+      if (reset) {
+        cache = null
+        writeFailed = false
+        blind = false
+      }
       for (const fn of listeners) fn()
     },
     /** Called when another tab changes the save. Returns an unsubscribe function. */
@@ -816,12 +980,17 @@ export const save: Store = createStore({
   read: () => backend.read(),
   write: (s) => backend.write(s),
   backup: (raw) => backend.backup?.(raw),
+  readLive: () => backend.readLive?.() ?? null,
+  get writeLive() {
+    const b = backend
+    return b.writeLive && ((s: string | null) => b.writeLive!(s))
+  },
 })
 
 /** Swap where the save lives (default: localStorage). */
 export function configureStorage(next: StorageBackend) {
   backend = next
-  save.invalidate()
+  save.invalidate(true)
 }
 
 /** Where builds before the save's settings.nick kept the challenge nickname. */
@@ -855,13 +1024,109 @@ export function hydrate(
   raw: string | null,
   write: (s: string) => void | Promise<unknown>,
   backup?: (raw: string) => void,
+  live?: { initial?: string | null; write?: (s: string | null) => void | Promise<unknown> },
 ) {
-  configureStorage(memoryBackend(raw, write, backup))
+  configureStorage(memoryBackend(raw, write, backup, live))
 }
 
-// Another tab wrote the save: drop the cache so the next read is fresh.
-// (Reads also compare the raw text, so this is belt and braces, but it lets
-// screens re-render through save.onChange.)
+/**
+ * Sends only the latest text: while one write is in flight, newer texts
+ * replace each other and the last one goes next. Every caller gets a promise
+ * that settles when the queue drains, and rejects if the last write failed.
+ */
+export function coalescedWriter<T>(set: (value: T) => Promise<unknown>): (value: T) => Promise<void> {
+  let queued: { value: T } | null = null
+  let running: Promise<void> | null = null
+  return (value) => {
+    queued = { value }
+    running ??= (async () => {
+      // Let changes made in the same task join the first write.
+      await Promise.resolve()
+      let failed = false
+      try {
+        while (queued) {
+          const next: { value: T } = queued
+          queued = null
+          try {
+            await set(next.value)
+            failed = false
+          } catch {
+            failed = true
+          }
+        }
+      } finally {
+        running = null
+      }
+      if (failed) throw new Error('storage write failed')
+    })()
+    return running
+  }
+}
+
+/** A timeout is not a value: a stored null and "no answer yet" stay apart. */
+export type Timed<T> = { status: 'value'; value: T } | { status: 'timeout' } | { status: 'error'; error: unknown }
+
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<Timed<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<Timed<T>>((resolve) => {
+    timer = setTimeout(() => resolve({ status: 'timeout' }), ms)
+  })
+  const settled = p.then(
+    (value): Timed<T> => ({ status: 'value', value }),
+    (error): Timed<T> => ({ status: 'error', error }),
+  )
+  return Promise.race([settled, timeout]).finally(() => clearTimeout(timer))
+}
+
+/** The shell's async key-value storage (Platform.storage). */
+export type AsyncStorage = {
+  get(key: string): Promise<string | null>
+  set(key: string, value: string): Promise<void>
+}
+
+/**
+ * Boot for async storage (Toss). Waits up to `timeoutMs` for the save and
+ * the live checkpoint. In time: the store reads them from memory and mirrors
+ * writes back, coalesced so only the latest text goes out. Too slow: the
+ * store goes blind (empty, memory-only, never writes, lastWriteFailed) so a
+ * slow read can never overwrite the real save; when the answer comes, the
+ * store is hydrated with it and `onLate` runs (re-render). A failed read
+ * keeps the store blind for the session. Returns whether it loaded in time.
+ */
+export async function hydrateAsync(
+  storage: AsyncStorage,
+  opts: { timeoutMs: number; onLate?: () => void; onError?: (err: unknown) => void },
+): Promise<boolean> {
+  const loading = Promise.all([storage.get(SAVE_KEY), storage.get(LIVE_KEY).catch(() => null)])
+  const ready = ([raw, liveRaw]: [string | null, string | null]) =>
+    hydrate(
+      raw,
+      coalescedWriter((s: string) => storage.set(SAVE_KEY, s)),
+      (backup) => void storage.set(BACKUP_KEY, backup).catch(() => {}),
+      { initial: liveRaw, write: coalescedWriter((s: string | null) => storage.set(LIVE_KEY, s ?? '')) },
+    )
+  const first = await withTimeout(loading, opts.timeoutMs)
+  if (first.status === 'value') {
+    ready(first.value)
+    return true
+  }
+  configureStorage(blindBackend())
+  if (first.status === 'error') {
+    opts.onError?.(first.error)
+    return false
+  }
+  loading.then(
+    (late) => {
+      ready(late)
+      opts.onLate?.()
+    },
+    (err) => opts.onError?.(err),
+  )
+  return false
+}
+
+// Another tab wrote the save: the next read goes back to storage, and
+// screens can re-render through save.onChange.
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
   window.addEventListener('storage', (e) => {
     if (e.key === null || e.key === SAVE_KEY) save.invalidate()
