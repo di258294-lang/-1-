@@ -387,3 +387,55 @@ describe('compact storage', () => {
     expect(store.daily('2027-06-01')?.held).toEqual(held)
   })
 })
+
+describe('coaching state', () => {
+  it('defaults when missing, without counting as a repair', () => {
+    const v2 = JSON.stringify({ v: 2, daily: {}, habits: [], seenIntro: true })
+    const loaded = parseSave(v2)
+    expect(loaded.backup).toBe(false)
+    expect(loaded.file.coach).toEqual({ active: null, done: [], lessons: [] })
+    expect(loaded.file.seenSeasons).toEqual([])
+  })
+
+  it('keeps a valid mission and drops what is broken', () => {
+    const raw = JSON.stringify({
+      v: 2,
+      coach: {
+        active: { id: 'stopLine', since: '2026-10-05', attempts: ['pass', 'nope', 'fail'], recheck: true },
+        done: [{ id: 'longHold', at: '2026-10-01' }, { id: 'bogus', at: '2026-10-02' }, { id: 'fewTrades', at: 'x' }],
+        lessons: ['L1', 'L1', 7, 'p:coin'],
+      },
+      seenSeasons: ['2026-09', 'junk', '2026-09'],
+    })
+    const { file } = parseSave(raw)
+    expect(file.coach.active).toEqual({ id: 'stopLine', since: '2026-10-05', attempts: ['pass', 'fail'], recheck: true })
+    expect(file.coach.done).toEqual([{ id: 'longHold', at: '2026-10-01' }])
+    expect(file.coach.lessons).toEqual(['L1', 'p:coin'])
+    expect(file.seenSeasons).toEqual(['2026-09'])
+    // An unknown mission id is dropped, not trusted.
+    expect(parseSave(JSON.stringify({ v: 2, coach: { active: { id: 'x' } } })).file.coach.active).toBeNull()
+    expect(parseSave(JSON.stringify({ v: 2, coach: 'garbage' })).issues).toContain('coach')
+  })
+
+  it('updates read-modify-write and survives a reload', () => {
+    const { backend, store } = setup()
+    store.updateCoach((c) => ({ ...c, active: { id: 'waitBeat', since: '2026-10-05', attempts: ['pass'] } }))
+    store.markLessonSeen('L3')
+    store.markLessonSeen('L3')
+    store.markSeasonsSeen(['2026-09', '2026-08'])
+    const again = createStore(memoryBackend(backend.peek()))
+    expect(again.coach()).toEqual({
+      active: { id: 'waitBeat', since: '2026-10-05', attempts: ['pass'] },
+      done: [],
+      lessons: ['L3'],
+    })
+    expect(again.seenSeasons()).toEqual(['2026-08', '2026-09'])
+  })
+
+  it('skips the write when nothing changed', () => {
+    const { store, writes } = setup()
+    store.updateCoach(() => null)
+    store.markSeasonsSeen([])
+    expect(writes).toHaveLength(0)
+  })
+})
