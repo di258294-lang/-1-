@@ -16,6 +16,7 @@ import { logError } from './errors'
 import { DISCLAIMER } from './intro'
 import { anySheetOpen, confirmSheet } from './sheet'
 import { isTutorial } from './tutorial'
+import { isChallenge } from './challenge'
 
 const TICK_MS = 1000 / TICKS_PER_SECOND
 /** Trading days visible on the live chart. */
@@ -245,6 +246,9 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
         logError(err, 'markIntroSeen')
       }
       route = unsavedResult()
+    } else if (isChallenge(market)) {
+      // A friend's chart: never in practice stats, unlocks or habit history.
+      route = unsavedResult()
     } else {
       try {
         route = { name: 'result', mode, market, ...completeRound(mode, market, round) }
@@ -295,7 +299,7 @@ export function playScreen(go: Navigate, mode: Mode, market: Market): Screen {
       h(
         'p',
         { class: 'equity-label' },
-        `${mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : tutorial ? '처음 연습' : isLong ? '장기 모드 · 1년' : '연습'} · ${product.name} · 가상 돈`,
+        `${mode.kind === 'daily' ? `오늘의 차트 #${mode.day}` : tutorial ? '처음 연습' : isChallenge(market) ? '친구 도전' : isLong ? '장기 모드 · 1년' : '연습'} · ${product.name} · 가상 돈`,
       ),
       equity,
       delta,

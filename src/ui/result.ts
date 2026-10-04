@@ -18,6 +18,7 @@ import { lessonCard } from './lesson'
 import { luckCard, luckPlaceholder, luckTestApplies, runLuckTest } from './luck'
 import { missionCard, nextAction } from './missions'
 import { isTutorial } from './tutorial'
+import { challengeButton, challengeCompare, challengeLuck } from './challenge'
 import { startPractice } from './products'
 import { shareOut, shareUrl } from './share'
 
@@ -173,9 +174,12 @@ export function resultScreen(
         foot,
       )
     : null
-  const judged = mission && (mission.outcome === 'pass' || mission.outcome === 'fail')
-  const focus = judged ? missionCard(mission) : habitCard
-  const folded = judged ? habitCard : mission && mission.outcome === 'ineligible' ? missionCard(mission) : null
+  // A friend's challenge (null otherwise) is the point of that round: it takes
+  // the slot. Challenge rounds never reach completeRound, so no mission there.
+  const versus = challengeCompare(market, result)
+  const judged = !versus && mission && (mission.outcome === 'pass' || mission.outcome === 'fail')
+  const focus = versus ?? (judged ? missionCard(mission) : habitCard)
+  const folded = versus || judged ? habitCard : mission && mission.outcome === 'ineligible' ? missionCard(mission) : null
 
   // 3. One next action.
   const next = nextAction(mission, !!judged)
@@ -203,6 +207,7 @@ export function resultScreen(
       luckSlot.replaceWith(card)
       luckInline.textContent = `운 비교 · ${luckRank(res)}`
       luckInline.hidden = false
+      challengeLuck(market, res.percentile)
       if (record) save.setLuck(record.id, res.percentile)
       // L7/L8 belong with the luck card, and only on a round with no other lesson.
       if (!lesson && record) {
@@ -338,6 +343,7 @@ export function resultScreen(
           h('button', { class: 'btn btn-quiet', onclick: again }, mode.kind === 'daily' ? '연습 한 판' : '한 판 더'),
           h('button', { class: 'btn btn-primary', onclick: share }, '공유하기'),
         ),
+    challengeButton(market, result, mode),
     h('p', { class: 'fine disclaimer' }, '가상 시장에서 나온 게임 결과예요. 실제 투자 성과나 투자 조언이 아니에요.'),
   )
 

@@ -1706,3 +1706,62 @@ button.cal-cell:active {
   margin: 0 -10px 0 0;
   color: var(--ink-2);
 }
+
+/* social */
+
+/* Home: the weekly rule stays on one line, clipped before it pushes the count. */
+.weekly-row .weekly-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekly-row .list-value {
+  flex: none;
+}
+
+.weekly-count {
+  margin: 4px 0 20px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sheet .habit-kicker {
+  margin-bottom: 4px;
+}
+
+.challenge-name {
+  width: 100%;
+  height: 52px;
+  margin: -8px 0 16px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--well);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+
+.challenge-name::placeholder {
+  color: var(--ink-3);
+}
+
+/* Records: the weekly card sits in its section like the other cards. */
+.records .weekly-sec {
+  margin-top: 16px;
+}
+
+.records .weekly-sec > .habit-card {
+  margin-top: 0;
+}
+
+.challenge-rows {
+  margin-top: 4px;
+}
+
+.challenge-send {
+  margin-top: 4px;
+}

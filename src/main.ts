@@ -2,6 +2,7 @@ import './styles.css'
 import { platform } from '#platform'
 import { BACKUP_KEY, hydrate, SAVE_KEY } from './core/storage'
 import type { Route, Screen } from './ui/app'
+import { openChallenge, takeChallengeParam } from './ui/challenge'
 import { errorScreen, installErrorHandlers, logError } from './ui/errors'
 import { habitsScreen } from './ui/habits'
 import { homeScreen } from './ui/home'
@@ -11,6 +12,9 @@ import { resultScreen } from './ui/result'
 import { closeAllSheets, closeTopSheet, confirmSheet } from './ui/sheet'
 
 installErrorHandlers()
+
+// Read and strip ?c= before anything else, so a reload never re-opens it.
+const challengeCode = takeChallengeParam()
 
 const root = document.getElementById('app')!
 let current: Screen | null = null
@@ -98,6 +102,14 @@ async function boot() {
     if (!handleBack()) confirmExit()
   })
   go({ name: 'home' })
+  // A friend's challenge link (?c=...): its sheet opens over home.
+  if (challengeCode !== null) {
+    try {
+      openChallenge(go, challengeCode)
+    } catch (err) {
+      logError(err, 'openChallenge')
+    }
+  }
 }
 
 void boot()
