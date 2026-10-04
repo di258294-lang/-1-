@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { dailySeed } from './daily'
-import { COMPANIES, generateMarket, type Market, type NewsEvent } from './market'
+import { dailySeed, nextKey } from './daily'
+import { pathReturn } from './luck'
+import { COMPANIES, generateMarket, playPrice, type Market, type NewsEvent } from './market'
+import { dailyProduct } from './products'
+import { createRng, type Rng } from './rng'
 import { cashRatePerTick } from './round'
 import {
   benchReturn,
   CUT_LOSS_TICKS,
   dayVerdict,
   longestLoss,
+  MIN_HELD,
   passesRule,
   pastWeeks,
   reactedToRumor,
@@ -131,6 +135,18 @@ describe('passesRule', () => {
     expect(passesRule('fewTrades', day({ yourReturn: -0.02, buyHoldReturn: -0.05 }), () => flat)).toBe(false)
   })
 
+  it('fewTrades and noRumor need the round held 20% or more: doing almost nothing does not pass', () => {
+    const m = marketOf(() => 10_000, [rumor(300)])
+    // One 3-second hold that happened to beat its own share of the market.
+    const tiny = day({ trades: 1, held: heldOn([10, 40]), yourReturn: 0.01 })
+    expect(passesRule('fewTrades', tiny, () => flat)).toBe(false)
+    expect(passesRule('noRumor', tiny, () => m)).toBe(false)
+    const enough = day({ trades: 1, held: heldOn([10, 10 + MIN_HELD * PLAY_TICKS]), yourReturn: 0.01 })
+    expect(passesRule('fewTrades', enough, () => flat)).toBe(true)
+    expect(passesRule('noRumor', enough, () => m)).toBe(true)
+    for (const key of ['fewTrades', 'noRumor'] as const) expect(WEEKLY_RULES.find((r) => r.key === key)?.detail).toContain('20% 이상')
+  })
+
   it('halfCash: held 20% to 50% of the time and beat holding the same share', () => {
     expect(passesRule('halfCash', day({ held: heldOn([0, 200]) }), () => flat)).toBe(true)
     expect(passesRule('halfCash', day({ held: heldOn([0, 201]) }), () => flat)).toBe(false)
@@ -141,14 +157,14 @@ describe('passesRule', () => {
 
   it('noRumor: no buy or sell between a rumor and its price move, and beat holding the same share', () => {
     const m = marketOf(() => 10_000, [rumor(100)])
-    expect(passesRule('noRumor', day({ held: heldOn([10, 60]) }), () => m)).toBe(true)
+    expect(passesRule('noRumor', day({ held: heldOn([0, 90]) }), () => m)).toBe(true)
     // Bought on the headline.
     expect(passesRule('noRumor', day({ held: heldOn([105, 160]) }), () => m)).toBe(false)
     // Sold on the headline.
     expect(passesRule('noRumor', day({ held: heldOn([50, 110]) }), () => m)).toBe(false)
     // Bought once the price moved: a reaction to the price, not the rumor.
-    expect(passesRule('noRumor', day({ held: heldOn([116, 160]) }), () => m)).toBe(true)
-    expect(passesRule('noRumor', day({ held: heldOn([10, 60]), yourReturn: -0.001 }), () => m)).toBe(false)
+    expect(passesRule('noRumor', day({ held: heldOn([116, 200]) }), () => m)).toBe(true)
+    expect(passesRule('noRumor', day({ held: heldOn([0, 90]), yourReturn: -0.001 }), () => m)).toBe(false)
     // Holding all day on an up day is not "beating" anything.
     expect(passesRule('noRumor', day({ held: heldOn([0, PLAY_TICKS]), trades: 1, yourReturn: 0.05, buyHoldReturn: 0.052 }), () => m)).toBe(false)
   })
@@ -245,6 +261,54 @@ describe('weeklyProgress', () => {
       const m = generateMarket(dailySeed(d.key), 'stock')
       expect(typeof passesRule(r.key, d, () => m)).toBe('boolean')
     }
+  })
+})
+
+describe('calibration on real daily charts (182 dailies from 2026-10-05)', () => {
+  const days: Array<{ key: string; m: Market }> = []
+  for (let key = '2026-10-05'; days.length < 182; key = nextKey(key)) days.push({ key, m: generateMarket(dailySeed(key), dailyProduct(key), 'short') })
+  const play = (style: (m: Market, rng: Rng) => boolean[], rule: 'fewTrades' | 'noRumor') => {
+    const vs = days.map(({ key, m }) => {
+      const held = style(m, createRng(dailySeed(key) + 17))
+      let trades = 0
+      for (let t = 0; t < held.length; t++) if (held[t] && (t === 0 || !held[t - 1])) trades++
+      const bh = playPrice(m, m.playTicks) / playPrice(m, 0) - 1
+      return dayVerdict(rule, { key, yourReturn: pathReturn(m, held), buyHoldReturn: bh, trades, held }, () => m)
+    })
+    const judged = vs.filter((v) => v !== 'skip')
+    return judged.filter((v) => v === 'pass').length / judged.length
+  }
+  /** One 3-second hold: was 42% of days and 63% of fully played weeks on fewTrades. */
+  const tiny = (m: Market, rng: Rng) => {
+    const held = new Array<boolean>(m.playTicks).fill(false)
+    const a = rng.int(0, m.playTicks - 31)
+    for (let t = a; t < a + 30; t++) held[t] = true
+    return held
+  }
+  /** One to three holds of 4 to 15 s at random moments: a real low-frequency trader with no timing edge. */
+  const lowFreq = (m: Market, rng: Rng) => {
+    const held = new Array<boolean>(m.playTicks).fill(false)
+    const want = rng.int(1, 3)
+    for (let placed = 0, tries = 0; placed < want && tries < 500; tries++) {
+      const len = rng.int(40, 150)
+      const a = rng.int(0, m.playTicks - len - 1)
+      let free = true
+      for (let t = Math.max(0, a - 2); t < Math.min(m.playTicks, a + len + 2); t++) if (held[t]) free = false
+      if (!free) continue
+      for (let t = a; t < a + len; t++) held[t] = true
+      placed++
+    }
+    return held
+  }
+
+  it('doing almost nothing never passes fewTrades or noRumor', () => {
+    expect(play(tiny, 'fewTrades')).toBe(0)
+    expect(play(tiny, 'noRumor')).toBe(0)
+  })
+
+  it('stays achievable for a low-frequency trader: a third of days or so without any timing edge', () => {
+    expect(play(lowFreq, 'fewTrades')).toBeGreaterThan(0.25)
+    expect(play(lowFreq, 'noRumor')).toBeGreaterThan(0.2)
   })
 })
 

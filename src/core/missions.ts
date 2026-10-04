@@ -18,11 +18,13 @@ import type { RoundResult } from './round'
  *   - Passed when the rule holds in 3 of the last 4 judged rounds (the
  *     rules mission needs 3 in a row). With 2 of 3, a player who never
  *     changed finished most missions by luck.
- *   - Rules about rare events (buying after a spike, moving on a rumor) are
- *     judged against what random pressing gives on the same chart, so long
- *     rounds with 7.5 times the ticks aren't near-impossible.
+ *   - Rules about rare events (buying after a spike, moving on a rumor,
+ *     staying past the loss line, acting on a filing) are judged against
+ *     what chance gives on the same chart, so long rounds with 7.5 times the
+ *     ticks are neither near-impossible nor free.
  *   - No mission rewards trading more, and none can be farmed by pressing
- *     once and holding to the bell.
+ *     once and holding to the bell (longHold, stayIn and fewTrades skip
+ *     rounds held 95% or more; rules3 needs two trades).
  *
  * Everything here is pure; storage and screens wrap it.
  */
@@ -66,9 +68,15 @@ const MAX_ATTEMPTS = 12
 /** Passes needed among the last judged rounds, for every mission but rules3. */
 export const PASS_NEED = 3
 export const PASS_WINDOW = 4
-/** longHold: one stretch at least this long, in wall-clock seconds (both round lengths). */
-export const LONG_HOLD_SEC = 10
-/** longHold and stayIn are not judged when held this much: pressing once and waiting for the bell is not the skill. */
+/**
+ * longHold: one stretch at least this long, in wall-clock seconds. A quarter
+ * of a short round (5 of its 20 days); in a long round, 30 s is 25 of its
+ * 250 days, a tenth of the round. A flat 10 s was passed by anyone in a long
+ * round, and a quarter of it (75 s) by almost no one.
+ */
+export const LONG_HOLD_SEC = { short: 10, long: 30 } as const
+export const longHoldSec = (m: Pick<RoundMetrics, 'isLong'>) => (m.isLong ? LONG_HOLD_SEC.long : LONG_HOLD_SEC.short)
+/** longHold, stayIn and fewTrades are not judged when held this much: pressing once and waiting for the bell is not the skill. */
 export const FULL_HOLD = 0.95
 /** stayIn is never assigned right after a round held at least this much: that player is already in the market. */
 export const STAY_IN_SKIP_HELD = 0.5
@@ -96,6 +104,11 @@ export type RoundMetrics = {
   stopLate: number
   /** The longest time one of them stayed past the line, in seconds (0 when none crossed). */
   stopLateSec: number
+  /**
+   * How many late ones there would be on average if the exits ignored the
+   * line: stopLosers times this chart's stopLateShare.
+   */
+  stopChance: number
   /** Longest single holding stretch, as a share of the round and in seconds. */
   longestShare: number
   longestSec: number
@@ -103,7 +116,12 @@ export type RoundMetrics = {
   winTrades: number
   avgWinHoldSec: number
   avgLossHoldSec: number
-  comparableRates: boolean
+  /** Seconds spent holding while up / while down, and the sells made in each state. */
+  upSec: number
+  downSec: number
+  sellsUp: number
+  sellsDown: number
+  /** Chance of selling within one second while up / while down (continuity-corrected). */
   sellRateUp: number
   sellRateDown: number
   chaseEntries: number
@@ -115,6 +133,8 @@ export type RoundMetrics = {
   rumorChance: number
   filings: number
   filingReactions: number
+  /** How many filing reactions pressing at the player's own pace would give on this chart, on average. */
+  filingChance: number
   isLong: boolean
   /** Ticks per simulated day, to speak in days in long mode. */
   ticksPerDay: number
@@ -129,6 +149,81 @@ export const LOSS_LINE = 2
 const SWING_TICKS = 2 * TICKS_PER_SECOND
 /** Time allowed past the loss line before selling. */
 const STOP_REACTION_TICKS = TICKS_PER_SECOND
+/** lossFirst: time needed both up and down (2 s each) before the two sell rates are compared. */
+export const LOSS_FIRST_MIN_SEC = 2
+
+/**
+ * The exit-blind reference for stopLine: someone who sells at a random
+ * moment, whatever the price does, holding STOP_REF_SEC seconds on average
+ * (a constant chance of selling every tick). Wall-clock seconds, like the
+ * line itself, so it is the same in short and long rounds.
+ */
+export const STOP_REF_SEC = 4
+
+/**
+ * The share of this chart's losing trades (held 1 s or more) that stay more
+ * than 1 s past the loss line when the exit is blind to the line: every
+ * start tick, with hold lengths weighted as the reference player's. Times
+ * the player's own losing trades, it is how many late exits chance alone
+ * gives, like chaseChance for buys after a spike. It does not depend on how
+ * long the player held, so holding losers long never earns a bigger allowance.
+ */
+export function stopLateShare(market: Market, swing: number) {
+  const n = market.playTicks
+  const keep = 1 - 1 / (STOP_REF_SEC * TICKS_PER_SECOND)
+  const maxL = Math.ceil(8 * STOP_REF_SEC * TICKS_PER_SECOND)
+  // Hold-length weights keep^L; only lengths of 1 s or more count, as for the player.
+  const weight = new Float64Array(maxL + 1)
+  for (let L = TICKS_PER_SECOND; L <= maxL; L++) weight[L] = keep ** L
+  const prices = market.prices
+  const o = market.historyTicks
+  let losers = 0
+  let late = 0
+  for (let e = 0; e < n; e++) {
+    const p0 = prices[o + e]
+    const floor = p0 * (1 - LOSS_LINE * swing)
+    const end = Math.min(n, e + maxL)
+    let cross = -1
+    for (let x = e + 1; x <= end; x++) {
+      const p = prices[o + x]
+      if (cross < 0 && p < floor) cross = x
+      if (p < p0) {
+        const w = weight[x - e]
+        losers += w
+        if (cross >= 0 && x - cross > STOP_REACTION_TICKS) late += w
+      }
+    }
+  }
+  return losers > 0 ? late / losers : 0
+}
+
+/**
+ * Filing reactions chance alone gives: for each filing, the chance that
+ * pressing at the player's own pace (their entries per tick out of the
+ * market, sells per tick in it) moves the right way between the headline
+ * and the price move. The same model as rumorChance in habits.ts.
+ */
+function filingChanceOf(market: Market, held: readonly boolean[], entries: number, sells: number) {
+  const n = market.playTicks
+  let heldTicks = 0
+  for (let t = 0; t < n; t++) if (held[t]) heldTicks++
+  const rateIn = entries / Math.max(1, n - heldTicks)
+  const rateOut = sells / Math.max(1, heldTicks)
+  let sum = 0
+  for (const e of market.news) {
+    if (e.kind === 'rumor') continue
+    const len = Math.max(0, Math.min(e.impactAt, n) - Math.max(1, e.at))
+    const pIn = 1 - Math.exp(-rateIn * len)
+    const pOut = 1 - Math.exp(-rateOut * len)
+    const holding = Boolean(held[Math.max(0, e.at - 1)])
+    if (e.implied > 0) sum += holding ? pOut * (1 - Math.exp(-rateIn * len * 0.5)) : pIn
+    else sum += holding ? pOut : pIn * (1 - Math.exp(-rateOut * len * 0.5))
+  }
+  return sum
+}
+
+/** Chance of at least one sell within 1 s, from sells per tick with a half-sell continuity correction. */
+const perSecond = (sells: number, ticks: number) => 1 - (1 - Math.min(1, (sells + 0.5) / Math.max(1, ticks))) ** TICKS_PER_SECOND
 
 export function roundMetrics(market: Market, result: Pick<RoundResult, 'heldRatio' | 'held'>, habits: RoundHabits): RoundMetrics {
   const f = habits.facts
@@ -158,6 +253,7 @@ export function roundMetrics(market: Market, result: Pick<RoundResult, 'heldRati
       }
     }
   }
+  const c = habits.counts
   return {
     trades: habits.trades,
     t40: (habits.trades * 400) / market.playTicks,
@@ -166,15 +262,19 @@ export function roundMetrics(market: Market, result: Pick<RoundResult, 'heldRati
     stopLosers,
     stopLate,
     stopLateSec: stopLateTicks / TICKS_PER_SECOND,
+    stopChance: stopLosers ? stopLosers * stopLateShare(market, swing) : 0,
     longestShare: longest / market.playTicks,
     longestSec: longest / TICKS_PER_SECOND,
     lossTrades: f.lossTrades,
     winTrades: f.winTrades,
     avgWinHoldSec: f.avgWinHoldSec,
     avgLossHoldSec: f.avgLossHoldSec,
-    comparableRates: f.comparableRates,
-    sellRateUp: f.sellRateUp,
-    sellRateDown: f.sellRateDown,
+    upSec: c.expUp / TICKS_PER_SECOND,
+    downSec: c.expDown / TICKS_PER_SECOND,
+    sellsUp: c.sellUp,
+    sellsDown: c.sellDown,
+    sellRateUp: perSecond(c.sellUp, c.expUp),
+    sellRateDown: perSecond(c.sellDown, c.expDown),
     chaseEntries: f.chaseEntries,
     chaseChance: habits.evidence.chaseChance,
     rumors: f.rumors,
@@ -182,12 +282,24 @@ export function roundMetrics(market: Market, result: Pick<RoundResult, 'heldRati
     rumorChance: habits.evidence.rumorChance,
     filings: f.filings,
     filingReactions: f.filingReactions,
+    filingChance: filingChanceOf(market, result.held, habits.trades, c.sellUp + c.sellDown),
     isLong: market.length === 'long',
     ticksPerDay: market.ticksPerDay,
     playTicks: market.playTicks,
   }
 }
 
+/** Filing reactions needed: more than pressing at your own pace gives (1 in a short round). */
+export const filingNeed = (m: Pick<RoundMetrics, 'filingChance'>) => Math.round(m.filingChance) + 1
+/** Late exits that exits blind to the loss line would give on this chart, as a whole number. */
+export const stopChanceCount = (m: Pick<RoundMetrics, 'stopChance'>) => Math.round(m.stopChance)
+/**
+ * Late exits that are still fine: fewer than chance gives (none while chance
+ * gives fewer than 2). Allowing as many as chance passed a blind seller in
+ * 58% of short rounds; one fewer keeps short rounds where they were (50%,
+ * was 48%) and puts long rounds at 45%, where no late exit at all passed 1%.
+ */
+export const stopAllowance = (m: Pick<RoundMetrics, 'stopChance'>) => Math.max(0, stopChanceCount(m) - 1)
 /** Buys after a spike that are still fine: what random pressing gives on this chart (0 in a short round). */
 export const chaseAllowance = (m: Pick<RoundMetrics, 'chaseChance'>) => Math.round(m.chaseChance)
 /** Rumor reactions that are still fine: what random pressing gives on this chart (0 in a short round). */
@@ -232,7 +344,13 @@ export type MissionDef = {
 /** The rules mission's four rules, as one sentence per broken rule. */
 const ruleBreaks = (m: RoundMetrics) => {
   const out: string[] = []
-  if (m.stopLate > 0) out.push(`손실 매매가 손절선 ${lossLine(m)} 아래에서 ${secs(m.stopLateSec)} 버텼어요.`)
+  if (m.stopLate > stopAllowance(m)) {
+    out.push(
+      stopAllowance(m)
+        ? `손실 매매 ${m.stopLate}개가 손절선 ${lossLine(m)} 아래에서 1초 넘게 버텼어요. 아무 때나 판 것(${stopChanceCount(m)}개쯤)보다 적어야 해요.`
+        : `손실 매매가 손절선 ${lossLine(m)} 아래에서 ${secs(m.stopLateSec)} 버텼어요.`,
+    )
+  }
   if (m.chaseEntries > chaseAllowance(m)) out.push(`급등 직후에 ${m.chaseEntries}번 샀어요.`)
   if (m.rumorReactions > rumorAllowance(m)) out.push(`소문에 ${m.rumorReactions}번 먼저 움직였어요.`)
   if (m.t40 > 6) out.push(`매매가 ${per40(m)}으로 6번을 넘었어요.`)
@@ -249,7 +367,7 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
     id: 'stopLine',
     habit: 'holder',
     title: '손실이 깊어지기 전에 손 떼기',
-    goal: '손실 난 매매가 손절선 아래로 내려가면 1초 안에 팔기. 손절선은 이 차트가 2초에 보통 움직이는 폭의 2배로, 주식이면 -2~3% 정도예요.',
+    goal: '손실 난 매매가 손절선 아래로 내려가면 1초 안에 팔기. 손절선은 이 차트가 2초에 보통 움직이는 폭의 2배로, 주식이면 -2~3% 정도예요. 손실 매매가 많은 판에선 아무 때나 팔았을 때보다 늦은 게 적으면 괜찮아요.',
     why: '손실을 오래 버틸수록 되돌리기 어려워져요.',
     need: PASS_NEED,
     window: PASS_WINDOW,
@@ -258,9 +376,13 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
       if (!m.stopLate) {
         return { verdict: 'pass', measure: `손실 매매 ${m.stopLosers}개 모두 손절선 ${lossLine(m)} 아래에서 1초 넘게 버티지 않았어요.` }
       }
+      const allow = stopAllowance(m)
+      const extra = allow
+        ? ` 이 차트에선 아무 때나 팔아도 ${stopChanceCount(m)}개쯤은 늦어서, ${allow}개까지는 괜찮아요.`
+        : ` 가장 길게는 ${was(secs(m.stopLateSec))}.`
       return {
-        verdict: 'fail',
-        measure: `손실 매매 ${m.stopLosers}개 중 ${m.stopLate}개가 손절선 ${lossLine(m)} 아래에서 1초 넘게 버텼어요. 가장 길게는 ${was(secs(m.stopLateSec))}.`,
+        verdict: m.stopLate <= allow ? 'pass' : 'fail',
+        measure: `손실 매매 ${m.stopLosers}개 중 ${m.stopLate}개가 손절선 ${lossLine(m)} 아래에서 1초 넘게 버텼어요.${extra}`,
       }
     },
   },
@@ -273,8 +395,8 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
     need: PASS_NEED,
     window: PASS_WINDOW,
     judge(m) {
-      if (!m.comparableRates) {
-        return { verdict: 'ineligible', measure: '수익 중·손실 중에 들고 있던 시간이나 판 횟수가 적어서 세지 않았어요.' }
+      if (m.upSec < LOSS_FIRST_MIN_SEC || m.downSec < LOSS_FIRST_MIN_SEC || m.sellsUp + m.sellsDown < 1) {
+        return { verdict: 'ineligible', measure: '수익 중·손실 중에 들고 있던 시간이 짧거나 판 적이 없어서 세지 않았어요.' }
       }
       const ok = m.sellRateDown >= m.sellRateUp
       return {
@@ -311,6 +433,9 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
     need: PASS_NEED,
     window: PASS_WINDOW,
     judge(m) {
+      // Pressing once and holding to the bell passed every round (it is a starter mission too).
+      const full = fullHold(m)
+      if (full) return full
       const ok = m.t40 <= 4 && m.heldRatio >= 0.4
       return {
         verdict: ok ? 'pass' : 'fail',
@@ -322,18 +447,19 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
     id: 'longHold',
     habit: 'skill',
     title: '한 번은 길게 들고 있기',
-    goal: `한 번에 ${LONG_HOLD_SEC}초 이상 계속 누르고 있기 · 매매는 40초에 6번까지`,
+    goal: `한 번에 ${LONG_HOLD_SEC.short}초(긴 판은 ${LONG_HOLD_SEC.long}초) 이상 계속 누르고 있기 · 매매는 40초에 6번까지`,
     why: '짧게 톡톡 치면 수수료만 나가고 움직임은 놓치기 쉬워요.',
     need: PASS_NEED,
     window: PASS_WINDOW,
     judge(m) {
       const full = fullHold(m)
       if (full) return full
-      const ok = m.longestSec >= LONG_HOLD_SEC && m.t40 <= 6
+      const need = longHoldSec(m)
+      const ok = m.longestSec >= need && m.t40 <= 6
       return {
         verdict: ok ? 'pass' : 'fail',
         measure:
-          `가장 길게 든 매매는 ${was(secs(m.longestSec))}. 목표는 ${LONG_HOLD_SEC}초 이상이에요.` +
+          `가장 길게 든 매매는 ${was(secs(m.longestSec))}. 목표는 ${need}초 이상이에요.` +
           (m.t40 > 6 ? ` 매매가 ${per40(m)}으로 6번을 넘었어요.` : ''),
       }
     },
@@ -387,10 +513,12 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
     window: PASS_WINDOW,
     judge(m) {
       if (!m.rumors || !m.filings) return { verdict: 'ineligible', measure: '소문과 공식 발표가 둘 다 나온 판에서만 미션을 봐요.' }
-      const ok = m.rumorReactions <= rumorAllowance(m) && m.filingReactions >= 1
+      const need = filingNeed(m)
+      const ok = m.rumorReactions <= rumorAllowance(m) && m.filingReactions >= need
+      const extra = need > 1 ? ` 발표가 많은 판이라 아무 때나 눌러도 ${need - 1}개쯤은 맞아서, ${need}개 이상이어야 해요.` : ''
       return {
         verdict: ok ? 'pass' : 'fail',
-        measure: `소문에 먼저 움직인 건 ${m.rumors}개 중 ${m.rumorReactions}개, 공식 발표에 맞게 움직인 건 ${m.filings}개 중 ${m.filingReactions}개였어요.`,
+        measure: `소문에 먼저 움직인 건 ${m.rumors}개 중 ${m.rumorReactions}개, 공식 발표에 맞게 움직인 건 ${m.filings}개 중 ${m.filingReactions}개였어요.${extra}`,
       }
     },
   },
@@ -416,11 +544,13 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
     id: 'rules3',
     habit: 'skill',
     title: '네 가지 규칙으로 3판 연속',
-    goal: '손실은 손절선 아래로 1초 넘게 버티지 않기, 급등 직후엔 안 사기, 소문엔 먼저 안 움직이기, 매매는 40초에 6번 이하',
+    goal: '손실은 손절선 아래로 1초 넘게 버티지 않기, 급등 직후엔 안 사기, 소문엔 먼저 안 움직이기, 매매는 40초에 6번 이하 (매매 2번 이상인 판에서). 매매가 많은 판에선 아무 때나 눌러도 생기는 정도까지는 괜찮아요.',
     why: '한 판 잘하는 것보다 같은 규칙을 여러 판 지키는 게 어려워요.',
     need: 3,
     window: 3,
     judge(m) {
+      // One press held to the bell breaks none of the rules on any rising chart (52% of short rounds).
+      if (m.trades < 2) return { verdict: 'ineligible', measure: '매매가 2번 이상인 판에서만 미션을 봐요.' }
       const broke = ruleBreaks(m)
       return broke.length
         ? { verdict: 'fail', measure: broke[0] }

@@ -42,13 +42,13 @@ export const WEEKLY_RULES: readonly WeeklyRule[] = [
   {
     key: 'fewTrades',
     title: '매매 3번 이하로, 그냥 들고 있는 것보다 더 벌기',
-    detail: `1~3번만 사고팔고, 그냥 들고 있는 것보다 더 벌면 돼요. ${BENCH_NOTE}`,
+    detail: `1~3번만 사고팔고 판의 20% 이상 들고 있으면서, 그냥 들고 있는 것보다 더 벌면 돼요. ${BENCH_NOTE}`,
     needsMarket: true,
   },
   {
     key: 'noRumor',
     title: '소문엔 반응 없이, 그냥 들고 있는 것보다 더 벌기',
-    detail: `소문이 뜨면 가격이 움직일 때까지 사지도 팔지도 않고, 그냥 들고 있는 것보다 더 벌면 돼요. ${BENCH_NOTE} 소문이 없던 날은 세지 않아요.`,
+    detail: `소문이 뜨면 가격이 움직일 때까지 사지도 팔지도 않고 판의 20% 이상 들고 있으면서, 그냥 들고 있는 것보다 더 벌면 돼요. ${BENCH_NOTE} 소문이 없던 날은 세지 않아요.`,
     needsMarket: true,
     goal: 2,
   },
@@ -73,8 +73,13 @@ export const WEEKLY_EPOCH = '2026-09-28'
 
 const FEW_TRADES = 3
 const HALF = 0.5
-/** halfCash: at least this much of the round held, so a 3-second dip-in doesn't count as "half in cash". */
-const HALF_MIN = 0.2
+/**
+ * Every rule that compares with holding: at least this much of the round
+ * held, so "do almost nothing" can't pass (the same 20% as the mission guard).
+ * Against the exposure-matched benchmark, one random 3-second hold beat it on
+ * 42% of days and completed fewTrades in 63% of fully played weeks.
+ */
+export const MIN_HELD = 0.2
 /** cutLoss: the longest a position may sit below its buy price. */
 export const CUT_LOSS_TICKS = 2 * TICKS_PER_SECOND
 /** cutLoss: held at least this long, so a single tap doesn't pass. */
@@ -174,10 +179,12 @@ export function longestLoss(market: Market, held: readonly boolean[]) {
  */
 export function benchReturn(day: Pick<WeeklyDay, 'buyHoldReturn' | 'held'>, market: Market) {
   const ticks = market.playTicks
-  const h = ticks > 0 ? heldTicks(day.held, ticks) / ticks : 0
+  const h = heldShare(day, market)
   const cash = (1 + cashRatePerTick(market)) ** ticks - 1
   return h * day.buyHoldReturn + (1 - h) * cash
 }
+
+const heldShare = (day: Pick<WeeklyDay, 'held'>, m: Market) => (m.playTicks > 0 ? heldTicks(day.held, m.playTicks) / m.playTicks : 0)
 
 const hasRumor = (m: Market) => m.news.some((n) => n.kind === 'rumor' && n.at < m.playTicks)
 
@@ -189,17 +196,17 @@ export function dayVerdict(rule: WeeklyRuleKey, day: WeeklyDay, market: () => Ma
     case 'fewTrades': {
       if (day.trades > FEW_TRADES) return 'fail'
       const m = market()
-      return ok(day.yourReturn > benchReturn(day, m))
+      return ok(heldShare(day, m) >= MIN_HELD && day.yourReturn > benchReturn(day, m))
     }
     case 'halfCash': {
       const m = market()
-      const h = heldTicks(day.held, m.playTicks) / m.playTicks
-      return ok(h >= HALF_MIN && h <= HALF && day.yourReturn > benchReturn(day, m))
+      const h = heldShare(day, m)
+      return ok(h >= MIN_HELD && h <= HALF && day.yourReturn > benchReturn(day, m))
     }
     case 'noRumor': {
       const m = market()
       if (!hasRumor(m)) return 'skip'
-      return ok(!reactedToRumor(m, day.held) && day.yourReturn > benchReturn(day, m))
+      return ok(heldShare(day, m) >= MIN_HELD && !reactedToRumor(m, day.held) && day.yourReturn > benchReturn(day, m))
     }
     case 'cutLoss': {
       const m = market()
