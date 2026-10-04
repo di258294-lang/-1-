@@ -19,7 +19,9 @@
   --surface: #ffffff;
   --well: #e9ebee;
   --grid: #eceef1;
-  --up: #e0263a;
+  /* Text at 14 px: up 4.96:1 / down 5.03:1 on --canvas, at least 4.6:1 on
+     --well and the soft fills (qa3 P2-13). Dark: 4.8:1 or more everywhere. */
+  --up: #cc1f32;
   --up-soft: #fdebed;
   --down: #1a62d6;
   --down-soft: #e7effc;
@@ -1236,6 +1238,14 @@ button {
   color: var(--ink);
 }
 
+/* noRumor: played, but no rumor to judge. Dashed, so it never reads as a
+   day not played (qa3 P2-5b). */
+.wk-skip .wk-dot {
+  background: none;
+  color: var(--ink-3);
+  border: 1.5px dashed var(--ink-3);
+}
+
 .wk-future .wk-dot,
 .wk-before .wk-dot {
   background: none;
@@ -1848,6 +1858,10 @@ button.cal-cell:active {
 @media (max-width: 320px) {
   .wk { gap: 2px; }
   .wk-cell { width: 24px; }
+  /* The large strip (records card, sheets) shares the width instead of
+     7 x 36 px, which spilled 16 px past a 288 px screen (qa3 P2-1). */
+  .wk-lg .wk-cell { width: auto; flex: 1 1 0; min-width: 0; }
+  .wk-lg .wk-dot { width: 26px; height: 26px; }
   .sq-legend { gap: 2px 10px; }
 }
 

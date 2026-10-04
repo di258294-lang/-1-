@@ -67,33 +67,6 @@ export function missionCard(outcome: MissionOutcome) {
   )
 }
 
-/**
- * The one next action: the mission for the next round. New missions say
- * why; a continuing one shows its progress.
- */
-export function nextAction(outcome: MissionOutcome | null, compact = false) {
-  const pick = outcome?.next
-  const id = pick?.id ?? outcome?.id
-  if (!id) return null
-  const def = MISSIONS[id]
-  const fresh = !!pick
-  // The mission card right above already names it: just say what to do.
-  if (!fresh && compact) {
-    return h('div', { class: 'tip next-action' }, h('span', null, '다음 판에서 해볼 것'), h('b', null, def.goal))
-  }
-  const label = fresh ? (pick.recheck ? '다음 판 미션 · 다시 해보기' : outcome?.outcome === 'new' ? '다음 판 미션' : '새 미션') : '다음 판에서 해볼 것'
-  const goal = def.goal.replace(/[.。]$/, '')
-  return h(
-    'div',
-    { class: 'tip next-action' },
-    h('span', null, label),
-    h('b', null, def.title),
-    // Why it changed, when it changed without being completed (the card above may be folded).
-    fresh && outcome?.reason && !compact ? h('span', { class: 'next-goal' }, outcome.reason) : null,
-    h('span', { class: 'next-goal' }, fresh ? `${goal}. ${def.why}` : def.goal),
-  )
-}
-
 /** The active mission for the habits screen, or null before the first round. */
 export function activeMissionBlock() {
   const active = save.coach().active

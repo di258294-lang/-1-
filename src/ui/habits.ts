@@ -35,9 +35,9 @@ const MEASURES: Record<HabitKey, string> = {
 
 const CHANGE: Record<HabitTrend['change'], string> = { down: '줄었어요', up: '늘었어요', same: '비슷해요' }
 
-/** "6~15판 평균 62 → 최근 10판 31 · 줄었어요" */
+/** "6~15판 평균 62점 → 최근 10판 31점 · 줄었어요" */
 function trendLine(t: HabitTrend) {
-  const n = (x: number) => Math.round(x * 100)
+  const n = (x: number) => `${Math.round(x * 100)}점`
   return `${TREND_SKIP + 1}~${TREND_SKIP + TREND_WINDOW}판 평균 ${n(t.from)} → 최근 ${TREND_WINDOW}판 ${n(t.to)} · ${CHANGE[t.change]}`
 }
 

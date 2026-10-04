@@ -45,7 +45,7 @@ function weekRange(p: WeeklyProgress) {
 const MARK_CLASS: Record<DayMark, string> = {
   pass: 'wk-played',
   fail: 'wk-missed',
-  skip: 'wk-before',
+  skip: 'wk-skip',
   none: 'wk-before',
   today: 'wk-today',
   future: 'wk-future',
@@ -58,6 +58,19 @@ const MARK_WORD: Record<DayMark, string> = {
   none: '안 한 날',
   today: '오늘',
   future: '남은 날',
+}
+
+/** The key under a noRumor week, where a dashed ring is a day that didn't count. */
+function skipLegend() {
+  const item = (cls: string, text: string) =>
+    h('span', { class: 'wk-key' }, h('span', { class: `wk-cell ${cls}` }, h('span', { class: 'wk-dot' })), text)
+  return h(
+    'p',
+    { class: 'wk-legend', 'aria-hidden': 'true' },
+    item('wk-played', '해낸 날'),
+    item('wk-missed', '못 한 날'),
+    item('wk-skip', '소문 없어서 안 센 날'),
+  )
 }
 
 /** Monday to Sunday, filled where the day kept the rule. */
@@ -78,6 +91,7 @@ function dayCells(p: WeeklyProgress, today: string) {
         ),
       ),
     ),
+    p.rule.key === 'noRumor' ? skipLegend() : null,
   )
 }
 
@@ -148,23 +162,6 @@ export function weeklyRow(openRecords: () => void): HTMLElement | null {
       h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
     ),
   )
-}
-
-/**
- * One line for the daily result screen, about the day just played:
- * "이번 주 챌린지 3번 중 2번 · 하루 더 하면 완료예요", or why the day didn't
- * count. Null if progress can't be read.
- */
-export function weeklyResultLine(today = dateKey()): string | null {
-  const p = progress(today)
-  if (!p) return null
-  const mark = p.days.find((d) => d.key === today)?.mark
-  if (mark === 'skip') return '이번 주 챌린지 · 오늘 차트엔 소문이 없어서 세지 않았어요.'
-  if (p.done) return '이번 주 챌린지 완료예요.'
-  const left = p.goal - p.passed
-  const daysLeft = p.days.filter((d) => d.key > today).length
-  const tail = left <= daysLeft ? `${left === 1 ? '하루' : `${left}번`} 더 하면 완료예요.` : '월요일엔 새 챌린지가 나와요.'
-  return `이번 주 챌린지 ${countText(p)} · ${tail}`
 }
 
 /** The records screen card, and below it every finished week that was completed. */

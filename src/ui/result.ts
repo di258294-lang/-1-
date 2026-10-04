@@ -1,6 +1,6 @@
 import { leaderboardButton } from './leaderboard'
 import { bridgeLine, gradeLineShown } from '../core/copy'
-import { dailySeed, nextKey } from '../core/daily'
+import { dailySeed, dateKey, nextKey } from '../core/daily'
 import { direction, formatPct, formatWon } from '../core/format'
 import { PROFILE_MIN_ROUNDS, profileFrom, roundInsight, TYPES, type HabitRecord, type RoundHabits } from '../core/habits'
 import { seasonLabel } from '../core/season'
@@ -160,27 +160,42 @@ const weeklyDay = (key: string): WeeklyDay | undefined => {
   return d && { key, ...d }
 }
 
+/** Whether a day's chart has a rumor for the noRumor rule to judge (core/weekly.ts hasRumor). */
+const chartHasRumor = (key: string) => {
+  const m = generateMarket(dailySeed(key), productOf(key), 'short')
+  return m.news.some((n) => n.kind === 'rumor' && n.at < m.playTicks)
+}
+
 /**
  * The end of a daily result: what tomorrow brings and how close this week's
  * challenge is (ux2 P1-4, top-5 #3). "내일은 채권 · 이번 주 챌린지 2/3, 하루 더 해내면 완료예요".
+ * A round finished after midnight says today's chart is open instead (qa3
+ * P2-10), and noRumor only counts the days left whose chart has a rumor
+ * (qa3 P2-5a).
  */
 function tomorrowHook(key: string): HTMLElement | null {
   try {
-    const tomorrow = nextKey(key)
-    const name = PRODUCTS[dailyProduct(tomorrow)].name
+    const today = dateKey()
+    const rolled = today !== key
+    const head = rolled
+      ? `오늘의 ${PRODUCTS[dailyProduct(today)].name} 차트가 열렸어요`
+      : `내일은 ${PRODUCTS[dailyProduct(nextKey(key))].name}`
     let weekly = ''
     try {
       const p = weeklyProgress(key, weeklyDay, (d) => generateMarket(dailySeed(d.key), productOf(d.key), 'short'))
-      const left = p.days.filter((d) => d.mark === 'future').length
+      const future = p.days.filter((d) => d.mark === 'future')
+      const noRumor = p.rule.key === 'noRumor'
+      const left = noRumor ? future.filter((d) => chartHasRumor(d.key)).length : future.length
       const need = p.goal - p.passed
       if (p.days.find((d) => d.key === key)?.mark === 'skip') weekly = '이번 주 챌린지 · 오늘 차트엔 소문이 없어서 세지 않았어요'
       else if (p.done) weekly = '이번 주 챌린지 완료'
-      else if (left === 0) weekly = '내일부터 새 주 챌린지가 열려요'
+      else if (future.length === 0) weekly = rolled ? '새 주 챌린지가 열렸어요' : '내일부터 새 주 챌린지가 열려요'
       else if (need <= left) weekly = `이번 주 챌린지 ${p.goal}번 중 ${p.passed}번, ${need === 1 ? '하루' : `${need}번`} 더 해내면 완료예요`
+      else if (noRumor) weekly = '이번 주는 소문 있는 날이 부족해요'
     } catch (err) {
       logError(err, 'tomorrowHook weekly')
     }
-    return h('div', { class: 'tip tomorrow-hook' }, h('b', null, `내일은 ${name}`), weekly ? h('span', null, weekly) : null)
+    return h('div', { class: 'tip tomorrow-hook' }, h('b', null, head), weekly ? h('span', null, weekly) : null)
   } catch (err) {
     logError(err, 'tomorrowHook')
     return null
@@ -196,6 +211,8 @@ function tomorrowHook(key: string): HTMLElement | null {
 function tutorialResult(go: Navigate, market: Market, result: RoundResult): Screen {
   const product = PRODUCTS[market.product]
   const tapped = longestHold(result.held) < TUTORIAL_HOLD_SECONDS * TICKS_PER_SECOND
+  // Nothing pressed at all: don't blame a tap that never happened (qa3 P2-2).
+  const untouched = result.trades === 0
   let toggle = false
   try {
     toggle = save.getSettings().tapToggle
@@ -203,7 +220,11 @@ function tutorialResult(go: Navigate, market: Market, result: RoundResult): Scre
     // Default controls.
   }
   const done = dailyDone()
-  const heading = h('h1', { class: 'result-grade' }, tapped ? "아직 '계속 누르기'가 안 됐어요" : '연습 끝, 잘 따라왔어요')
+  const heading = h(
+    'h1',
+    { class: 'result-grade' },
+    untouched ? '연습 차트가 그냥 지나갔어요' : tapped ? "아직 '계속 누르기'가 안 됐어요" : '연습 끝, 잘 따라왔어요',
+  )
   const head = h(
     'section',
     { class: 'result-head' },
@@ -211,11 +232,15 @@ function tutorialResult(go: Navigate, market: Market, result: RoundResult): Scre
     h(
       'p',
       { class: 'result-line' },
-      tapped
+      untouched
         ? toggle
-          ? '한 번 톡 치면 사고, 다시 톡 치면 팔아요. 그 사이 동안만 들고 있어요.'
-          : '짧게 톡 치면 사자마자 팔려요. 손가락을 화면에 대고 있는 동안만 들고 있어요.'
-        : '손가락을 대고 있는 동안 들고 있고, 떼면 팔아요. 그게 전부예요.',
+          ? '아직 한 번도 안 눌렀어요. 화면을 한 번 톡 치면 사요.'
+          : '아직 한 번도 안 눌렀어요. 화면을 누르고 있으면 사요.'
+        : tapped
+          ? toggle
+            ? '한 번 톡 치면 사고, 다시 톡 치면 팔아요. 그 사이 동안만 들고 있어요.'
+            : '짧게 톡 치면 사자마자 팔려요. 손가락을 화면에 대고 있는 동안만 들고 있어요.'
+          : '손가락을 대고 있는 동안 들고 있고, 떼면 팔아요. 그게 전부예요.',
     ),
     versusLine(result),
     h('p', { class: 'fine' }, '연습이라 기록에는 남지 않아요.'),
@@ -254,7 +279,14 @@ function tutorialResult(go: Navigate, market: Market, result: RoundResult): Scre
     h('div', { class: 'result-actions result-sticky' }, ...actions),
     h('p', { class: 'fine disclaimer' }, '가상 시장에서 나온 게임 결과예요. 실제 투자 성과나 투자 조언이 아니에요.'),
   )
-  focusAndAnnounce(heading, tapped ? `끝났어요. 아직 계속 누르기가 안 됐어요. 한 번 더 연습해 보세요.` : endAnnouncement('연습 끝', result))
+  focusAndAnnounce(
+    heading,
+    untouched
+      ? '끝났어요. 아직 한 번도 안 눌렀어요. 한 번 더 연습해 보세요.'
+      : tapped
+        ? `끝났어요. 아직 계속 누르기가 안 됐어요. 한 번 더 연습해 보세요.`
+        : endAnnouncement('연습 끝', result),
+  )
   return {
     el,
     back() {
