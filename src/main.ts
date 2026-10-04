@@ -1,6 +1,7 @@
 import './styles.css'
 import { platform } from '#platform'
-import { BACKUP_KEY, hydrate, migrateLegacyNick, SAVE_KEY } from './core/storage'
+import { takeChallengeCode } from './core/challenge'
+import { blindBackend, configureStorage, hydrateAsync, migrateLegacyNick } from './core/storage'
 import type { Route, Screen } from './ui/app'
 import { openChallenge, takeChallengeParam } from './ui/challenge'
 import { errorScreen, installErrorHandlers, logError } from './ui/errors'
@@ -9,12 +10,16 @@ import { homeScreen } from './ui/home'
 import { playScreen } from './ui/play'
 import { recordsScreen } from './ui/records'
 import { resultScreen } from './ui/result'
-import { closeAllSheets, closeTopSheet, confirmSheet } from './ui/sheet'
+import { anySheetOpen, closeAllSheets, closeTopSheet, confirmSheet } from './ui/sheet'
 
 installErrorHandlers()
 
-// Read and strip ?c= before anything else, so a reload never re-opens it.
-const challengeCode = takeChallengeParam()
+/**
+ * A friend's challenge code (?c=...) waiting for the home screen: read and
+ * stripped from the address before anything else, so a reload never
+ * re-opens it. A link that reaches the running app mid-round waits here too.
+ */
+let queuedChallenge = takeChallengeParam()
 
 const root = document.getElementById('app')!
 let current: Screen | null = null
@@ -55,13 +60,39 @@ function go(route: Route) {
   }
   root.append(current.el)
   window.scrollTo(0, 0)
+  if (currentRoute === 'home') openQueuedChallenge()
+}
+
+/** Opens a waiting challenge link over home. */
+function openQueuedChallenge() {
+  const code = queuedChallenge
+  if (code === null) return
+  queuedChallenge = null
+  try {
+    openChallenge(go, code)
+  } catch (err) {
+    logError(err, 'openChallenge')
+  }
+}
+
+/**
+ * Challenge entry for a link that opens the running app (Capacitor
+ * appUrlOpen). Over home at once; mid-round or on another screen, it waits
+ * for the next home screen.
+ */
+function onChallengeLink(code: string) {
+  queuedChallenge = code
+  if (currentRoute === 'home') {
+    closeAllSheets()
+    openQueuedChallenge()
+  }
 }
 
 /**
  * Platform back: closes the top sheet, else asks the screen, else goes home.
  * False on home, so the platform can leave the app.
  */
-export function handleBack(): boolean {
+function handleBack(): boolean {
   if (closeTopSheet()) return true
   if (current?.back) return current.back()
   if (currentRoute === 'home') return false
@@ -70,6 +101,11 @@ export function handleBack(): boolean {
 }
 
 function confirmExit() {
+  // A browser tab just goes back to where the player came from.
+  if (platform.kind === 'web') {
+    void platform.exit()
+    return
+  }
   confirmSheet({
     title: 'HOLD를 끝낼까요?',
     body: '오늘의 기록은 저장돼 있어요.',
@@ -80,37 +116,41 @@ function confirmExit() {
   })
 }
 
-/** Resolves to null if the shell's storage doesn't answer in time. */
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
-  return Promise.race([p, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))])
-}
+/** The save's backend is in place (Toss loads it asynchronously). */
+let storageReady = platform.kind !== 'toss'
 
 async function boot() {
   await platform.init()
   // The Toss app keeps the save in its own async storage; load it before the
   // first render. Browsers and the native apps keep using localStorage. The
-  // timeout keeps first paint well inside the platform's 10-second rule.
+  // timeout keeps first paint well inside the platform's 10-second rule; a
+  // late answer loads then (the store never writes before it has read).
   if (platform.kind === 'toss') {
-    const raw = await withTimeout(platform.storage.get(SAVE_KEY).catch(() => null), 2000)
-    hydrate(
-      raw,
-      (next) => platform.storage.set(SAVE_KEY, next),
-      (backup) => void platform.storage.set(BACKUP_KEY, backup),
-    )
+    await hydrateAsync(platform.storage, {
+      timeoutMs: 2000,
+      onLate: () => {
+        // Home drew an empty save: draw it again. Other screens pick the
+        // loaded save up on their next navigation.
+        if ((currentRoute === 'home' || currentRoute === null) && !anySheetOpen()) go({ name: 'home' })
+      },
+      onError: (err) => logError(err, 'storage load'),
+    })
+    storageReady = true
   }
   migrateLegacyNick()
   platform.onBack(() => {
     if (!handleBack()) confirmExit()
   })
+  platform.onOpenUrl((url) => {
+    const { code } = takeChallengeCode(url)
+    if (code !== null) onChallengeLink(code)
+  })
   go({ name: 'home' })
-  // A friend's challenge link (?c=...): its sheet opens over home.
-  if (challengeCode !== null) {
-    try {
-      openChallenge(go, challengeCode)
-    } catch (err) {
-      logError(err, 'openChallenge')
-    }
-  }
 }
 
-void boot()
+boot().catch((err) => {
+  logError(err, 'boot')
+  // Never write over a save that was not read.
+  if (!storageReady) configureStorage(blindBackend())
+  if (!current) go({ name: 'home' })
+})

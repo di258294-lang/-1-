@@ -238,15 +238,6 @@ export function challengeAccess(c: Challenge, today: string, playedToday: boolea
   return 'ok'
 }
 
-/** `base` with ?c=code added, keeping any query or hash it already has. */
-export function challengeUrl(base: string, code: string): string {
-  const hashAt = base.indexOf('#')
-  const head = hashAt < 0 ? base : base.slice(0, hashAt)
-  const hash = hashAt < 0 ? '' : base.slice(hashAt)
-  const sep = head.includes('?') ? (head.endsWith('?') || head.endsWith('&') ? '' : '&') : '?'
-  return `${head}${sep}${CHALLENGE_PARAM}=${code}${hash}`
-}
-
 /**
  * Takes the challenge code out of a URL. Returns the code (null when there
  * is none) and the URL to replace the current one with, so a reload does

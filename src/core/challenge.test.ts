@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CHALLENGE_PARAM,
   challengeAccess,
   challengeLabel,
   challengeShareText,
-  challengeUrl,
   cleanName,
   decodeChallenge,
   encodeChallenge,
@@ -14,6 +14,10 @@ import {
 } from './challenge'
 import { dailySeed, dayNumber, nextKey } from './daily'
 import { ENGINE_VERSION } from './market'
+import { withQuery } from './url'
+
+/** How share links carry a code (platform shareUrl). */
+const challengeUrl = (base: string, code: string) => withQuery(base, `${CHALLENGE_PARAM}=${code}`)
 
 const practice: Challenge = {
   seed: 3_141_592_653,
@@ -220,6 +224,8 @@ describe('urls', () => {
     expect(challengeUrl('https://x.y/?ref=1', 'abc')).toBe('https://x.y/?ref=1&c=abc')
     expect(challengeUrl('https://x.y/#top', 'abc')).toBe('https://x.y/?c=abc#top')
     expect(challengeUrl('intoss://hold', 'abc')).toBe('intoss://hold?c=abc')
+    expect(challengeUrl('https://x.y/?', 'abc')).toBe('https://x.y/?c=abc')
+    expect(challengeUrl('https://x.y/?a=1&', 'abc')).toBe('https://x.y/?a=1&c=abc')
   })
 
   it('takes the code out and keeps everything else', () => {
