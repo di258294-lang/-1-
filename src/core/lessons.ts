@@ -51,7 +51,7 @@ export function productLesson(market: Market): Lesson | null {
         const dy = market.yields[h + to] - market.yields[h + from]
         return {
           title: '금리와 채권은 반대로 움직여요',
-          line: `"${filing.headline}" 뒤 금리가 ${pp(dy, 2)}, 채권은 ${pct(moveAfter(market, filing.impactAt))} 움직였어요. 이 채권은 듀레이션이 ${D}년이라, 금리가 1%p 움직이면 가격은 약 ${D}% 반대로 움직여요.`,
+          line: `「${filing.headline}」 뒤 금리가 ${pp(dy, 2)}, 채권은 ${pct(moveAfter(market, filing.impactAt))} 움직였어요. 이 채권은 금리가 1% 움직이면 가격이 약 ${D}% 반대로 움직여요.`,
         }
       }
       return {
@@ -64,7 +64,7 @@ export function productLesson(market: Market): Lesson | null {
       if (scare) {
         return {
           title: '불안하면 금으로 돈이 몰려요',
-          line: `"${scare.headline}" 뒤 금이 ${pct(moveAfter(market, scare.impactAt))} 움직였어요. 불안할 때 금이 오르는 경우가 많아 안전자산이라고 부르지만, 늘 그렇지는 않아요.`,
+          line: `「${scare.headline}」 뒤 금이 ${pct(moveAfter(market, scare.impactAt))} 움직였어요. 불안할 때 금이 오르는 경우가 많아 안전자산이라고 부르지만, 늘 그렇지는 않아요.`,
         }
       }
       return {
@@ -212,7 +212,7 @@ const L3: Rule = ({ market, result }) => {
       return {
         id: 'L3',
         title: '소식은 금방 가격에 들어가요',
-        line: `"${n.headline}" 뒤 ${ticksText(market, t - n.impactAt + 1)} 만에 가격이 이미 ${pct(move)} 움직였어요. 모두가 아는 소식은 금방 가격에 반영돼서, 뒤늦게 따라가면 남는 몫이 작아요.`,
+        line: `「${n.headline}」 뒤 ${ticksText(market, t - n.impactAt + 1)} 만에 가격이 이미 ${pct(move)} 움직였어요. 모두가 아는 소식은 금방 가격에 반영돼서, 뒤늦게 따라가면 남는 몫이 작아요.`,
       }
     }
   }
