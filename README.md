@@ -89,6 +89,7 @@ src/platform/   web.ts(웹·Capacitor), toss.ts(앱인토스) — 빌드 모드�
 
 - [docs/RELEASE.md](docs/RELEASE.md): 출시 절차 (웹, Google Play, 앱인토스)
 - [docs/COMPLIANCE.md](docs/COMPLIANCE.md): 준법 검토, 출시 전 사람이 해야 할 일
+- [docs/LAUNCH.md](docs/LAUNCH.md): 경쟁 지형, 스토어 문구, 퍼지는 구조, 0원 출시 계획
 - [docs/MODEL.md](docs/MODEL.md): 가격 모델, 운 검정, 습관 측정 방법과 검증 숫자
 - [docs/BACKLOG.md](docs/BACKLOG.md): 개선 백로그와 진행 상태
 - [docs/PLAN.md](docs/PLAN.md), [docs/DESIGN.md](docs/DESIGN.md): 기획 배경, 디자인 원칙
