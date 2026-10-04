@@ -21,6 +21,11 @@ export type Route =
     }
   | { name: 'habits' }
 
-export type Screen = { el: HTMLElement; destroy?: () => void }
+export type Screen = {
+  el: HTMLElement
+  destroy?: () => void
+  /** Platform back (Android button, Toss back). True when handled. */
+  back?: () => boolean
+}
 
 export type Navigate = (route: Route) => void
