@@ -1,6 +1,7 @@
 import './styles.css'
 import { clearAnnouncements } from './ui/announce'
 import { platform } from '#platform'
+import { startOneStore } from './platform/onestore'
 import { takeChallengeCode } from './core/challenge'
 import { blindBackend, configureStorage, hydrateAsync, migrateLegacyNick } from './core/storage'
 import type { Route, Screen } from './ui/app'
@@ -149,7 +150,11 @@ async function boot() {
     const { code } = takeChallengeCode(url)
     if (code !== null) onChallengeLink(code)
   })
+  // The ONE store web game (its registered URL carries ?store=onestore):
+  // the store's SDK must start, and hear "ready" once the first screen is on.
+  const oneStore = platform.kind === 'web' ? startOneStore(handleBack, (err) => logError(err, 'onestore')) : null
   go({ name: 'home' })
+  oneStore?.ready()
 }
 
 boot().catch((err) => {
