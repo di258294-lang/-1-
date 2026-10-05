@@ -97,6 +97,6 @@
 
 ## 남은 것 📋
 
-- 사람이 할 일: 법정대리인 명의 계정(구글 플레이·토스), 토스 콘솔 앱 이름 `hold-timing`과 순위표 설정, 토스 채널톡 사전 문의, KIPRIS 상표 확인 — [COMPLIANCE.md](COMPLIANCE.md), [RELEASE.md](RELEASE.md), [LAUNCH.md](LAUNCH.md)
+- 사람이 할 일: 법정대리인 명의 계정(구글 플레이·토스), 토스 콘솔 앱 이름 `holdtime`과 순위표 설정, 토스 채널톡 사전 문의, KIPRIS 상표 확인 — [COMPLIANCE.md](COMPLIANCE.md), [RELEASE.md](RELEASE.md), [LAUNCH.md](LAUNCH.md)
 - 실기기 확인: 토스 순위표 음수 점수 허용 여부, 앱 알림 도착, 리뷰 창, 토스에서 도전장 링크 쿼리 전달
 - 알려진 한계: 주간 "매매 적게" 규칙은 여전히 반반에 가까움, 꾸준한 규칙형 플레이어는 10판 안에 기계형이 되기 어려움(실력 카드 기준을 따른 결과), 무료 웹 외 이미지 공유는 앱에서 파일 저장 플러그인 필요

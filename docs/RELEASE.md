@@ -145,7 +145,7 @@ App Store Connect → TestFlight → 내부 테스터 추가. 심사 없이 바�
 ### 이름 (확정)
 - 앱 이름 **`홀드`**, 영어 이름 **`HOLD Timing`**, 부제 `누르는 동안만 버티는 40초 타이밍 게임`.
 - "HOLD" 단독은 안 돼요. 영어 이름은 15자 이하이고 흔한 단어 하나만으로는 반려돼요 (LAUNCH.md "바뀐 사실").
-- **`.env.toss`의 `VITE_AIT_APP_NAME`은 지금 `hold-timing`이에요.** 콘솔에 등록한 appName이 다르면 그 값으로 바꾸고 다시 빌드하세요. 공유 링크(`intoss://<appName>`)와 `.ait` 파일 이름에 쓰여요. 비어 있거나 TODO면 빌드가 멈춰요.
+- **`.env.toss`의 `VITE_AIT_APP_NAME`은 콘솔에 등록한 `holdtime`이에요 (2026-10-05 등록, 바꿀 수 없음).** 공유 링크(`intoss://<appName>`)와 `.ait` 파일 이름에 쓰여요. 비어 있거나 TODO면 빌드가 멈춰요.
 
 ### 콘솔에 올릴 이미지
 | 항목 | 규격 | 파일 |
