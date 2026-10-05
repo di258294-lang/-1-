@@ -145,12 +145,12 @@ App Store Connect → TestFlight → 내부 테스터 추가. 심사 없이 바�
 ### 이름 (확정)
 - 앱 이름 **`홀드`**, 영어 이름 **`HOLD Timing`**, 부제 `누르는 동안만 버티는 40초 타이밍 게임`.
 - "HOLD" 단독은 안 돼요. 영어 이름은 15자 이하이고 흔한 단어 하나만으로는 반려돼요 (LAUNCH.md "바뀐 사실").
-- **`.env.toss`의 `VITE_AIT_APP_NAME`을 콘솔에 등록한 appName으로 꼭 바꾸세요.** 지금은 `TODO`라서 그대로 빌드하면 공유 링크(`intoss://TODO`)와 `.ait` 파일 이름이 틀려요.
+- **`.env.toss`의 `VITE_AIT_APP_NAME`은 지금 `hold-timing`이에요.** 콘솔에 등록한 appName이 다르면 그 값으로 바꾸고 다시 빌드하세요. 공유 링크(`intoss://<appName>`)와 `.ait` 파일 이름에 쓰여요. 비어 있거나 TODO면 빌드가 멈춰요.
 
 ### 콘솔에 올릴 이미지
 | 항목 | 규격 | 파일 |
 |---|---|---|
-| 로고 | 600×600 PNG, 각진 정사각형 (둥근 모서리 금지) | `assets/icon-only.png`를 600×600으로 줄여서 |
+| 로고 | 600×600 PNG, 각진 정사각형 (둥근 모서리 금지) | `store/toss/logo-600.png` (`assets/icon-only.png`를 줄인 것) |
 | 썸네일 (가로형 대표 이미지) | 1932×828 PNG | `store/toss/thumbnail.png` |
 | 스크린샷 (세로형) | 636×1048 PNG, **최소 3장** | `store/toss/screenshot-1.png` ~ `3.png` |
 | OG 이미지 | 1200×600 PNG | `store/toss/og.png` |
